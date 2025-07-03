@@ -1,0 +1,142 @@
+version: '3.8'
+
+services:
+  # Database
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: monitoring_db
+      POSTGRES_USER: monitoring_user
+      POSTGRES_PASSWORD: monitoring_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - monitoring_net
+
+  # Redis Queue
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - monitoring_net
+
+  # Main API Service
+  api_service:
+    build: ./api_service
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://monitoring_user:monitoring_pass@postgres:5432/monitoring_db
+      - REDIS_URL=redis://redis:6379
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./api_service:/app
+    networks:
+      - monitoring_net
+
+  # Browser Service
+  browser_service:
+    build: ./browser_service
+    ports:
+      - "8001:8001"
+    environment:
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+    volumes:
+      - browser_data:/app/browser_data
+    networks:
+      - monitoring_net
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+
+  # Worker Manager
+  worker_manager:
+    build: ./worker_manager
+    environment:
+      - DATABASE_URL=postgresql://monitoring_user:monitoring_pass@postgres:5432/monitoring_db
+      - REDIS_URL=redis://redis:6379
+      - BROWSER_SERVICE_URL=http://browser_service:8001
+      - LLM_SERVICE_URL=http://llm_service:8002
+    depends_on:
+      - postgres
+      - redis
+      - browser_service
+    volumes:
+      - ./worker_manager:/app
+    networks:
+      - monitoring_net
+
+  # LLM Analysis Service
+  llm_service:
+    build: ./llm_service
+    ports:
+      - "8002:8002"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+    volumes:
+      - ./llm_service:/app
+    networks:
+      - monitoring_net
+
+  # Notification Service
+  notification_service:
+    build: ./notification_service
+    ports:
+      - "8003:8003"
+    environment:
+      - DATABASE_URL=postgresql://monitoring_user:monitoring_pass@postgres:5432/monitoring_db
+      - REDIS_URL=redis://redis:6379
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - NOTIFICATION_EMAIL=${NOTIFICATION_EMAIL}
+      - SLACK_WEBHOOK=${SLACK_WEBHOOK}
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./notification_service:/app
+    networks:
+      - monitoring_net
+
+  # Frontend
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://duckerhub.com:8000
+      - REACT_APP_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+    depends_on:
+      - api_service
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - monitoring_net
+
+volumes:
+  postgres_data:
+  redis_data:
+  browser_data:
+
+networks:
+  monitoring_net:
+    driver: bridge

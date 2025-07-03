@@ -1,0 +1,188 @@
+from fastapi import FastAPI
+from pydantic import BaseModel
+import requests
+import os
+import json
+import re
+from bs4 import BeautifulSoup
+
+app = FastAPI(title="LLM Analysis Service")
+
+class AnalysisRequest(BaseModel):
+    content: str
+    prompt: str
+    max_tokens: int = 1000
+    model: str = "google/gemini-2.0-flash-001"
+
+class AnalysisResponse(BaseModel):
+    relevance_score: int
+    title: str
+    summary: str
+    key_points: list
+    confidence: float
+    success: bool
+    error: str = None
+
+def clean_html_content(html_content):
+    """Better HTML cleaning to extract actual article content"""
+    try:
+        soup = BeautifulSoup(html_content, 'html.parser')
+        
+        # Remove unwanted elements
+        for element in soup(["script", "style", "nav", "header", "footer", "aside", "form", "button"]):
+            element.decompose()
+        
+        # Try to find main content areas
+        main_content = ""
+        
+        # Look for article content in common containers
+        content_selectors = [
+            'article', 'main', '.post-content', '.entry-content', 
+            '.article-content', '.content', 'h1', 'h2', 'h3', 'p'
+        ]
+        
+        for selector in content_selectors:
+            elements = soup.select(selector)
+            for element in elements:
+                text = element.get_text().strip()
+                if len(text) > 50:  # Only include substantial text
+                    main_content += text + " "
+        
+        # If no specific content found, get all text
+        if len(main_content) < 100:
+            main_content = soup.get_text()
+        
+        # Clean up whitespace
+        lines = (line.strip() for line in main_content.splitlines())
+        chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+        text = ' '.join(chunk for chunk in chunks if chunk)
+        
+        # Remove extra whitespace
+        text = re.sub(r'\s+', ' ', text).strip()
+        
+        # Limit text length but keep meaningful content
+        if len(text) > 8000:
+            # Try to keep complete sentences
+            text = text[:8000]
+            last_period = text.rfind('.')
+            if last_period > 4000:  # If we have a good amount of text
+                text = text[:last_period + 1]
+            text += "..."
+        
+        print(f"Cleaned content preview: {text[:200]}...")
+        return text
+        
+    except Exception as e:
+        print(f"HTML cleaning error: {e}")
+        return html_content[:8000]
+
+@app.post("/analyze", response_model=AnalysisResponse)
+async def analyze_content(request: AnalysisRequest):
+    try:
+        cleaned_content = clean_html_content(request.content)
+        
+        print(f"Content length after cleaning: {len(cleaned_content)}")
+        
+        if not cleaned_content.strip() or len(cleaned_content) < 50:
+            return AnalysisResponse(
+                relevance_score=0,
+                title="No meaningful content found",
+                summary="The content appears to be empty or contains no readable text.",
+                key_points=["No meaningful content detected"],
+                confidence=0.0,
+                success=False,
+                error="Insufficient content"
+            )
+        
+        prompt = f"""Analyze this content for relevance to the user's requirements.
+
+Content: {cleaned_content}
+
+User Requirements: {request.prompt}
+
+Respond with JSON:
+{{"relevance_score": 0-100, "title": "descriptive title", "summary": "brief summary", "key_points": ["point1", "point2"], "confidence": 0.0-1.0}}
+
+Focus on finding AI, technology, and innovation content. If the content mentions artificial intelligence, machine learning, neural networks, or tech developments, score it highly."""
+        
+        # Call OpenRouter API
+        headers = {
+            "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "model": request.model,
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+            "max_tokens": request.max_tokens,
+            "temperature": 0.3
+        }
+        
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json=data,
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            response_text = result['choices'][0]['message']['content']
+            
+            print(f"LLM response: {response_text[:200]}...")
+            
+            # Extract JSON from response
+            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            if json_match:
+                analysis_data = json.loads(json_match.group())
+                score = analysis_data.get('relevance_score', 0)
+                print(f"Analysis score: {score}")
+                
+                return AnalysisResponse(
+                    relevance_score=score,
+                    title=analysis_data.get('title', 'Analysis Result'),
+                    summary=analysis_data.get('summary', 'Content analyzed'),
+                    key_points=analysis_data.get('key_points', ['Analysis completed']),
+                    confidence=analysis_data.get('confidence', 0.5),
+                    success=True
+                )
+            else:
+                print("No JSON found in response")
+                return AnalysisResponse(
+                    relevance_score=0,
+                    title="Parsing Error",
+                    summary="Could not parse LLM response",
+                    key_points=["JSON parsing failed"],
+                    confidence=0.0,
+                    success=False,
+                    error="JSON parsing failed"
+                )
+        else:
+            print(f"OpenRouter API error: {response.status_code}")
+            return AnalysisResponse(
+                relevance_score=0,
+                title="API Error",
+                summary=f"OpenRouter API error: {response.status_code}",
+                key_points=["API failed"],
+                confidence=0.0,
+                success=False,
+                error=f"API error: {response.status_code}"
+            )
+        
+    except Exception as e:
+        print(f"Analysis error: {e}")
+        return AnalysisResponse(
+            relevance_score=0,
+            title="Analysis Error",
+            summary=f"Error: {str(e)}",
+            key_points=["Error occurred"],
+            confidence=0.0,
+            success=False,
+            error=str(e)
+        )
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "service": "llm_service"}
