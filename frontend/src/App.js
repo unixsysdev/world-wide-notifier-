@@ -11,9 +11,12 @@ const MainApp = () => {
   const { user, logout, isAuthenticated, loading } = useAuth();
 
   const [jobs, setJobs] = useState([]);
+  const [alerts, setAlerts] = useState([]);
+  const [userSubscription, setUserSubscription] = useState(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [currentView, setCurrentView] = useState('dashboard');
   const [dataLoading, setDataLoading] = useState(true);
+  const [alertsLoading, setAlertsLoading] = useState(true);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -28,6 +31,8 @@ const MainApp = () => {
   useEffect(() => {
     if (isAuthenticated) {
       fetchJobs();
+      fetchAlerts();
+      fetchSubscription();
     }
   }, [isAuthenticated]);
 
@@ -39,6 +44,37 @@ const MainApp = () => {
       console.error('Error fetching jobs:', error);
     } finally {
       setDataLoading(false);
+    }
+  };
+
+  const fetchAlerts = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/alerts?limit=50`);
+      setAlerts(response.data);
+    } catch (error) {
+      console.error('Error fetching alerts:', error);
+    } finally {
+      setAlertsLoading(false);
+    }
+  };
+
+  const fetchSubscription = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/subscription`);
+      setUserSubscription(response.data);
+    } catch (error) {
+      console.error('Error fetching subscription:', error);
+    }
+  };
+
+  const acknowledgeAlert = async (alertId) => {
+    try {
+      await axios.post(`${API_URL}/alerts/${alertId}/acknowledge`);
+      // Refresh alerts to show updated status
+      fetchAlerts();
+    } catch (error) {
+      console.error('Error acknowledging alert:', error);
+      alert('Failed to acknowledge alert');
     }
   };
 
@@ -104,6 +140,151 @@ const MainApp = () => {
     return <Settings onBack={() => setCurrentView('dashboard')} />;
   }
 
+  if (currentView === 'alerts') {
+    return (
+      <div className="min-h-screen bg-gray-100">
+        {/* Navigation Header */}
+        <nav className="bg-white shadow-sm">
+          <div className="container mx-auto px-4">
+            <div className="flex justify-between items-center h-16">
+              <div className="flex items-center space-x-8">
+                <h1 className="text-xl font-bold text-gray-900">AI Monitoring</h1>
+                <div className="flex space-x-4">
+                  <button
+                    onClick={() => setCurrentView('dashboard')}
+                    className="px-3 py-2 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700"
+                  >
+                    Dashboard
+                  </button>
+                  <button
+                    onClick={() => setCurrentView('alerts')}
+                    className="px-3 py-2 rounded-md text-sm font-medium bg-blue-100 text-blue-700"
+                  >
+                    Alerts
+                  </button>
+                  <button
+                    onClick={() => setCurrentView('settings')}
+                    className="px-3 py-2 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700"
+                  >
+                    Settings
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center space-x-4">
+                <span className="text-sm text-gray-600">Welcome, {user?.name}</span>
+                <button
+                  onClick={logout}
+                  className="text-sm text-red-600 hover:text-red-800"
+                >
+                  Logout
+                </button>
+              </div>
+            </div>
+          </div>
+        </nav>
+
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex justify-between items-center mb-8">
+            <h2 className="text-2xl font-bold text-gray-900">Alert Management</h2>
+            <div className="flex space-x-4">
+              {userSubscription && (
+                <div className="text-sm text-gray-600">
+                  <span className="font-medium capitalize">{userSubscription.tier}</span> Plan
+                  {userSubscription.tier === 'free' && (
+                    <span className="ml-2">({userSubscription.daily_alert_count}/{userSubscription.alert_limit} alerts today)</span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {alertsLoading ? (
+            <div className="text-center py-12">
+              <div className="text-xl">Loading alerts...</div>
+            </div>
+          ) : (
+            <div className="grid gap-6">
+              {alerts.length === 0 ? (
+                <div className="text-center py-12">
+                  <h3 className="mt-2 text-sm font-medium text-gray-900">No alerts yet</h3>
+                  <p className="mt-1 text-sm text-gray-500">Alerts will appear here when your monitoring jobs detect relevant changes.</p>
+                </div>
+              ) : (
+                alerts.map((alert) => (
+                  <div 
+                    key={alert.id} 
+                    className={`bg-white overflow-hidden shadow rounded-lg border-l-4 ${
+                      alert.is_acknowledged 
+                        ? 'border-green-400' 
+                        : alert.relevance_score >= 80 
+                          ? 'border-red-400' 
+                          : alert.relevance_score >= 60 
+                            ? 'border-yellow-400' 
+                            : 'border-blue-400'
+                    }`}
+                  >
+                    <div className="px-4 py-5 sm:p-6">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <h3 className="text-lg leading-6 font-medium text-gray-900">
+                            {alert.title}
+                          </h3>
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            alert.relevance_score >= 80 
+                              ? 'bg-red-100 text-red-800' 
+                              : alert.relevance_score >= 60 
+                                ? 'bg-yellow-100 text-yellow-800' 
+                                : 'bg-blue-100 text-blue-800'
+                          }`}>
+                            Score: {alert.relevance_score}
+                          </span>
+                          {alert.is_acknowledged && (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              ✓ Acknowledged
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-sm text-gray-500">
+                            {new Date(alert.created_at).toLocaleDateString()} {new Date(alert.created_at).toLocaleTimeString()}
+                          </span>
+                          {!alert.is_acknowledged && (
+                            <button
+                              onClick={() => acknowledgeAlert(alert.id)}
+                              className="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-sm"
+                            >
+                              Acknowledge
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <p className="mt-2 text-sm text-gray-600">{alert.content}</p>
+                      
+                      <div className="mt-4 space-y-2 text-sm text-gray-500">
+                        <div>Job: {alert.job_name}</div>
+                        {alert.source_url && (
+                          <div>
+                            Source: <a href={alert.source_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">
+                              {alert.source_url}
+                            </a>
+                          </div>
+                        )}
+                        {alert.repeat_count > 0 && (
+                          <div>Repeated {alert.repeat_count} times</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (dataLoading) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
@@ -132,6 +313,20 @@ const MainApp = () => {
                   Dashboard
                 </button>
                 <button
+                  onClick={() => setCurrentView('alerts')}
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${
+                    currentView === 'alerts' 
+                      ? 'bg-blue-100 text-blue-700' 
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Alerts {alerts.filter(a => !a.is_acknowledged).length > 0 && (
+                    <span className="ml-1 bg-red-500 text-white text-xs rounded-full px-2 py-0.5">
+                      {alerts.filter(a => !a.is_acknowledged).length}
+                    </span>
+                  )}
+                </button>
+                <button
                   onClick={() => setCurrentView('settings')}
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
                     currentView === 'settings' 
@@ -158,7 +353,29 @@ const MainApp = () => {
 
       <div className="container mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-8">
-          <h2 className="text-2xl font-bold text-gray-900">Your Monitoring Jobs</h2>
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Your Monitoring Jobs</h2>
+            {userSubscription && (
+              <div className="mt-2 flex items-center space-x-4">
+                <span className="text-sm text-gray-600">
+                  <span className="font-medium capitalize">{userSubscription.tier}</span> Plan
+                </span>
+                {userSubscription.tier === 'free' && (
+                  <span className="text-sm text-gray-600">
+                    {userSubscription.daily_alert_count}/{userSubscription.alert_limit} alerts today
+                  </span>
+                )}
+                {userSubscription.tier === 'free' && (
+                  <button
+                    onClick={() => setCurrentView('upgrade')}
+                    className="text-sm bg-gradient-to-r from-purple-500 to-blue-600 text-white px-3 py-1 rounded-full hover:from-purple-600 hover:to-blue-700"
+                  >
+                    Upgrade to Premium
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           <button
             onClick={() => setShowCreateForm(true)}
             className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
@@ -226,15 +443,27 @@ const MainApp = () => {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">Frequency (minutes)</label>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Frequency (minutes)
+                        {userSubscription && (
+                          <span className="text-xs text-gray-500 ml-1">
+                            (min: {userSubscription.min_frequency_minutes})
+                          </span>
+                        )}
+                      </label>
                       <input
                         type="number"
                         name="frequency_minutes"
                         value={formData.frequency_minutes}
                         onChange={handleInputChange}
-                        min="5"
+                        min={userSubscription?.min_frequency_minutes || 5}
                         className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
                       />
+                      {userSubscription?.tier === 'free' && (
+                        <p className="mt-1 text-xs text-gray-500">
+                          Free tier: Daily checks only. Upgrade for minute-level monitoring.
+                        </p>
+                      )}
                     </div>
 
                     <div>
