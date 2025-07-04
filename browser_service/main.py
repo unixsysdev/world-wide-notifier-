@@ -64,6 +64,80 @@ class FingerprintManager:
         }
 
 fingerprint_manager = FingerprintManager()
+async def handle_consent_dialogs(page):
+    """Handle common cookie consent dialogs, especially Yahoo Finance GDPR"""
+    try:
+        # Wait a bit for the page to fully load
+        await page.wait_for_timeout(2000)
+        
+        # Check if this is a Yahoo consent page (contains specific Slovak text)
+        page_content = await page.content()
+        
+        if "Yahoo je súčasťou skupiny značiek" in page_content or "Prijať všetko" in page_content:
+            # Yahoo GDPR consent page detected - try to click accept
+            
+            # Wait for the button to be ready
+            await page.wait_for_timeout(1000)
+            
+            try:
+                # Try to find and click the "Accept all" button
+                accept_button = page.locator('button[name="agree"]').first
+                if await accept_button.is_visible(timeout=3000):
+                    await accept_button.click()
+                    # Wait for page to navigate
+                    await page.wait_for_load_state("networkidle", timeout=15000)
+                    return
+            except:
+                pass
+            
+            try:
+                # Try the class-based selector
+                accept_button = page.locator('.accept-all').first
+                if await accept_button.is_visible(timeout=3000):
+                    await accept_button.click()
+                    await page.wait_for_load_state("networkidle", timeout=15000)
+                    return
+            except:
+                pass
+            
+            try:
+                # Try text-based selection
+                accept_button = page.get_by_text("Prijať všetko")
+                if await accept_button.is_visible(timeout=3000):
+                    await accept_button.click()
+                    await page.wait_for_load_state("networkidle", timeout=15000)
+                    return
+            except:
+                pass
+        
+        # Generic consent dialog handling for other sites
+        consent_selectors = [
+            'button[id*="accept"]',
+            'button[class*="accept"]',
+            'button:has-text("Accept")',
+            'button:has-text("OK")',
+            'button:has-text("I agree")',
+            'button:has-text("Continue")',
+            '#onetrust-accept-btn-handler',
+            '#truste-consent-button',
+            '.cc-dismiss',
+        ]
+        
+        for selector in consent_selectors:
+            try:
+                button = page.locator(selector).first
+                if await button.is_visible(timeout=2000):
+                    await button.click()
+                    await page.wait_for_timeout(1000)
+                    return
+            except:
+                continue
+                
+    except Exception as e:
+        # If consent handling fails, continue anyway
+        pass
+
+
 
 @app.post("/scrape", response_model=ScrapeResponse)
 async def scrape_url(scrape_request: ScrapeRequest, http_request: Request):
@@ -110,6 +184,12 @@ async def scrape_url(scrape_request: ScrapeRequest, http_request: Request):
             # Wait for dynamic content
             await page.wait_for_timeout(scrape_request.wait_time * 1000)
             
+            # Handle cookie consent dialogs (especially for Yahoo Finance)
+            await handle_consent_dialogs(page)
+            
+            # Wait a bit more for content to load after consent handling
+            await page.wait_for_timeout(2000)
+            
             # Extract content
             content = await page.content()
             
@@ -139,6 +219,7 @@ async def scrape_url(scrape_request: ScrapeRequest, http_request: Request):
             success=False,
             error=str(e)
         )
+
 
 @app.get("/health")
 async def health_check():

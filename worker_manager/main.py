@@ -50,7 +50,9 @@ class ScalableWorkerManager:
         """Get jobs from database via API (more reliable than Redis scan)"""
         try:
             # This would ideally connect directly to DB, but for now use internal API
-            response = requests.get(f"http://api_service:8000/internal/jobs/active", timeout=10)
+            internal_api_key = os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production")
+            headers = {"X-Internal-API-Key": internal_api_key}
+            response = requests.get(f"http://api_service:8000/internal/jobs/active", headers=headers, timeout=10)
             if response.status_code == 200:
                 return response.json()
             else:
@@ -112,9 +114,12 @@ class ScalableWorkerManager:
     async def scrape_source_async(self, session: aiohttp.ClientSession, source_url: str) -> Optional[Dict]:
         """Async scrape using aiohttp for better concurrency"""
         try:
+            internal_api_key = os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production")
+            headers = {"X-Internal-API-Key": internal_api_key}
             async with session.post(
                 f"{self.browser_service_url}/scrape",
                 json={"url": source_url, "wait_time": 3},
+                headers=headers,
                 timeout=aiohttp.ClientTimeout(total=60)
             ) as response:
                 if response.status == 200:
@@ -129,6 +134,8 @@ class ScalableWorkerManager:
     async def analyze_content_async(self, session: aiohttp.ClientSession, content: str, prompt: str) -> Optional[Dict]:
         """Async LLM analysis"""
         try:
+            internal_api_key = os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production")
+            headers = {"X-Internal-API-Key": internal_api_key}
             async with session.post(
                 f"{self.llm_service_url}/analyze",
                 json={
@@ -136,6 +143,7 @@ class ScalableWorkerManager:
                     "prompt": prompt,
                     "max_tokens": 1000
                 },
+                headers=headers,
                 timeout=aiohttp.ClientTimeout(total=30)
             ) as response:
                 if response.status == 200:

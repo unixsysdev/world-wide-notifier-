@@ -34,14 +34,18 @@ class NotificationService:
         return psycopg2.connect(self.database_url, cursor_factory=RealDictCursor)
     
     def get_user_notification_channels(self, user_id):
-        """Get user's notification channels"""
-        with self.get_db_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT * FROM notification_channels WHERE user_id = %s AND is_active = true",
-                    (user_id,)
-                )
-                return cur.fetchall()
+            """Get user's notification channels"""
+            with self.get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT * FROM notification_channels WHERE user_id = %s AND is_active = true",
+                        (user_id,)
+                    )
+                    channels = cur.fetchall()
+                    logger.info(f"Found {len(channels)} active notification channels for user {user_id}")
+                    return channels
+
+
         
     def get_job_user_id(self, job_id):
         """Get user ID for a job"""
