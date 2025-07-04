@@ -629,20 +629,41 @@ async def create_job(job: JobCreate, current_user=Depends(get_current_user)):
 
 
 @app.get("/jobs")
-async def get_jobs(current_user=Depends(get_current_user)):
+async def get_jobs(
+    current_user=Depends(get_current_user),
+    search: str = None,
+    status: str = None,
+    limit: int = 50,
+    offset: int = 0
+):
     """Get all monitoring jobs for authenticated user"""
     jobs = []
+    
+    # Build query with filters
+    query = """
+        SELECT j.*, jns.repeat_frequency_minutes, jns.max_repeats, jns.require_acknowledgment
+        FROM jobs j
+        LEFT JOIN job_notification_settings jns ON j.id = jns.job_id
+        WHERE j.user_id = %s
+    """
+    params = [current_user['id']]
+    
+    if search:
+        query += " AND (j.name ILIKE %s OR j.description ILIKE %s)"
+        params.extend([f"%{search}%", f"%{search}%"])
+    
+    if status == "active":
+        query += " AND j.is_active = true"
+    elif status == "paused":
+        query += " AND j.is_active = false"
+    
+    query += " ORDER BY j.created_at DESC LIMIT %s OFFSET %s"
+    params.extend([limit, offset])
     
     # Get jobs from database for the current user
     with get_db_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-                SELECT j.*, jns.repeat_frequency_minutes, jns.max_repeats, jns.require_acknowledgment
-                FROM jobs j
-                LEFT JOIN job_notification_settings jns ON j.id = jns.job_id
-                WHERE j.user_id = %s 
-                ORDER BY j.created_at DESC
-            """, (current_user['id'],))
+            cur.execute(query, params)
             db_jobs = cur.fetchall()
     
     for job in db_jobs:
@@ -715,6 +736,134 @@ async def delete_job(job_id: str, current_user=Depends(get_current_user)):
     redis_client.lpush("job_queue", json.dumps({"job_id": job_id, "action": "delete"}))
     
     return {"message": "Job deleted successfully"}
+
+@app.post("/jobs/{job_id}/pause")
+async def pause_job(job_id: str, current_user=Depends(get_current_user)):
+    """Pause a monitoring job"""
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            # Verify job ownership
+            cur.execute(
+                "SELECT user_id FROM jobs WHERE id = %s",
+                (job_id,)
+            )
+            job_data = cur.fetchone()
+            
+            if not job_data:
+                raise HTTPException(status_code=404, detail="Job not found")
+            
+            if job_data['user_id'] != current_user['id']:
+                raise HTTPException(status_code=403, detail="Access denied")
+            
+            # Pause the job
+            cur.execute(
+                "UPDATE jobs SET is_active = FALSE WHERE id = %s",
+                (job_id,)
+            )
+            conn.commit()
+            
+            # Update Redis cache
+            redis_client.hset(f"job:{job_id}", "is_active", "false")
+    
+    return {"message": "Job paused successfully"}
+
+@app.post("/jobs/{job_id}/resume")
+async def resume_job(job_id: str, current_user=Depends(get_current_user)):
+    """Resume a paused monitoring job"""
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            # Verify job ownership
+            cur.execute(
+                "SELECT user_id FROM jobs WHERE id = %s",
+                (job_id,)
+            )
+            job_data = cur.fetchone()
+            
+            if not job_data:
+                raise HTTPException(status_code=404, detail="Job not found")
+            
+            if job_data['user_id'] != current_user['id']:
+                raise HTTPException(status_code=403, detail="Access denied")
+            
+            # Resume the job
+            cur.execute(
+                "UPDATE jobs SET is_active = TRUE WHERE id = %s",
+                (job_id,)
+            )
+            conn.commit()
+            
+            # Update Redis cache
+            redis_client.hset(f"job:{job_id}", "is_active", "true")
+            
+            # Queue job for immediate processing
+            redis_client.lpush("job_queue", json.dumps({"job_id": job_id, "action": "resume"}))
+    
+    return {"message": "Job resumed successfully"}
+
+@app.post("/jobs/{job_id}/duplicate")
+async def duplicate_job(job_id: str, current_user=Depends(get_current_user)):
+    """Duplicate an existing monitoring job"""
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            # Get original job
+            cur.execute("""
+                SELECT j.*, jns.repeat_frequency_minutes, jns.max_repeats, jns.require_acknowledgment
+                FROM jobs j
+                LEFT JOIN job_notification_settings jns ON j.id = jns.job_id
+                WHERE j.id = %s
+            """, (job_id,))
+            original_job = cur.fetchone()
+            
+            if not original_job:
+                raise HTTPException(status_code=404, detail="Job not found")
+            
+            if original_job['user_id'] != current_user['id']:
+                raise HTTPException(status_code=403, detail="Access denied")
+            
+            # Create new job ID
+            new_job_id = str(uuid.uuid4())
+            
+            # Insert duplicated job
+            cur.execute("""
+                INSERT INTO jobs (id, user_id, name, description, sources, prompt, frequency_minutes, 
+                                threshold_score, notification_channel_ids, alert_cooldown_minutes, 
+                                max_alerts_per_hour, is_active)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                new_job_id, current_user['id'], 
+                f"Copy of {original_job['name']}", 
+                original_job['description'],
+                original_job['sources'], 
+                original_job['prompt'],
+                original_job['frequency_minutes'],
+                original_job['threshold_score'],
+                original_job['notification_channel_ids'],
+                original_job['alert_cooldown_minutes'],
+                original_job['max_alerts_per_hour'],
+                False  # Start paused
+            ))
+            
+            # Insert notification settings if they exist
+            if original_job['repeat_frequency_minutes']:
+                cur.execute("""
+                    INSERT INTO job_notification_settings (job_id, notification_channel_ids, 
+                                                          repeat_frequency_minutes, max_repeats, 
+                                                          require_acknowledgment)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (
+                    new_job_id, original_job['notification_channel_ids'],
+                    original_job['repeat_frequency_minutes'],
+                    original_job['max_repeats'],
+                    original_job['require_acknowledgment']
+                ))
+            
+            conn.commit()
+    
+    return {
+        "id": new_job_id,
+        "message": "Job duplicated successfully",
+        "note": "Duplicate job is paused by default. Enable it when ready."
+    }
 
 @app.get("/alerts")
 async def get_alerts(
@@ -851,6 +1000,153 @@ async def get_user_stats(current_user=Depends(get_current_user)):
         },
         "subscription": subscription_info
     }
+
+@app.post("/alerts/bulk-acknowledge")
+async def bulk_acknowledge_alerts(
+    alert_ids: List[str],
+    current_user=Depends(get_current_user)
+):
+    """Acknowledge multiple alerts at once"""
+    if not alert_ids:
+        raise HTTPException(status_code=400, detail="No alert IDs provided")
+    
+    acknowledged_count = 0
+    failed_count = 0
+    
+    for alert_id in alert_ids:
+        success, _ = acknowledge_alert(alert_id, current_user['id'])
+        if success:
+            acknowledged_count += 1
+        else:
+            failed_count += 1
+    
+    return {
+        "acknowledged": acknowledged_count,
+        "failed": failed_count,
+        "total": len(alert_ids),
+        "message": f"Acknowledged {acknowledged_count} alerts, {failed_count} failed"
+    }
+
+@app.delete("/alerts/bulk-delete")
+async def bulk_delete_alerts(
+    alert_ids: List[str],
+    current_user=Depends(get_current_user)
+):
+    """Delete multiple alerts at once"""
+    if not alert_ids:
+        raise HTTPException(status_code=400, detail="No alert IDs provided")
+    
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            # Verify all alerts belong to user
+            placeholders = ','.join(['%s'] * len(alert_ids))
+            cur.execute(f"""
+                SELECT COUNT(*) as count FROM alerts a
+                JOIN jobs j ON a.job_id = j.id
+                WHERE a.id IN ({placeholders}) AND j.user_id = %s
+            """, alert_ids + [current_user['id']])
+            
+            result = cur.fetchone()
+            if result['count'] != len(alert_ids):
+                raise HTTPException(status_code=403, detail="Some alerts do not belong to user")
+            
+            # Delete alerts
+            cur.execute(f"""
+                DELETE FROM alerts WHERE id IN ({placeholders})
+            """, alert_ids)
+            
+            conn.commit()
+            deleted_count = cur.rowcount
+    
+    return {
+        "deleted": deleted_count,
+        "message": f"Deleted {deleted_count} alerts"
+    }
+
+@app.get("/job-templates")
+async def get_job_templates():
+    """Get predefined job templates for common use cases"""
+    templates = [
+        {
+            "name": "Oil Market Monitor",
+            "description": "Track crude oil prices and market-moving news",
+            "sources": [
+                "https://oilprice.com/",
+                "https://www.reuters.com/business/energy/",
+                "https://www.bloomberg.com/energy"
+            ],
+            "prompt": "Analyze this content for significant changes in oil prices, supply/demand news, OPEC decisions, or geopolitical events affecting oil markets. Focus on price movements, production changes, and market-moving announcements.",
+            "frequency_minutes": 30,
+            "threshold_score": 75,
+            "category": "Trading & Finance"
+        },
+        {
+            "name": "E-commerce Competitor Watch",
+            "description": "Monitor competitor pricing and product launches",
+            "sources": [
+                "https://competitor-site.com/products",
+                "https://amazon.com/s?k=your-product-category"
+            ],
+            "prompt": "Look for pricing changes, new product launches, promotional offers, or significant updates from competitors. Alert on price drops, new features, or marketing campaigns that could impact our market position.",
+            "frequency_minutes": 60,
+            "threshold_score": 70,
+            "category": "E-commerce"
+        },
+        {
+            "name": "Crypto DeFi Monitor",
+            "description": "Track DeFi protocol announcements and yield changes",
+            "sources": [
+                "https://defipulse.com/",
+                "https://compound.finance/",
+                "https://aave.com/"
+            ],
+            "prompt": "Monitor for new yield farming opportunities, protocol upgrades, security announcements, or significant APY changes. Alert on governance proposals, liquidity mining programs, or protocol vulnerabilities.",
+            "frequency_minutes": 15,
+            "threshold_score": 80,
+            "category": "Cryptocurrency"
+        },
+        {
+            "name": "Supply Chain Alerts",
+            "description": "Monitor shipping and logistics updates",
+            "sources": [
+                "https://www.freightwaves.com/",
+                "https://www.maersk.com/news",
+                "https://www.fedex.com/en-us/service-alerts.html"
+            ],
+            "prompt": "Track shipping delays, port congestion, fuel price changes, or logistics disruptions. Alert on carrier schedule changes, capacity issues, or supply chain bottlenecks affecting delivery times.",
+            "frequency_minutes": 45,
+            "threshold_score": 75,
+            "category": "Supply Chain"
+        },
+        {
+            "name": "Regulatory News Tracker",
+            "description": "Monitor government policy and regulatory changes",
+            "sources": [
+                "https://www.regulations.gov/",
+                "https://www.sec.gov/news/press-releases",
+                "https://www.fda.gov/news-events/press-announcements"
+            ],
+            "prompt": "Identify new regulations, policy changes, or compliance requirements affecting our industry. Alert on proposed rules, enforcement actions, or regulatory guidance that could impact business operations.",
+            "frequency_minutes": 120,
+            "threshold_score": 85,
+            "category": "Regulatory"
+        },
+        {
+            "name": "Tech Stock Earnings Watch",
+            "description": "Track earnings reports and analyst updates",
+            "sources": [
+                "https://finance.yahoo.com/calendar/earnings",
+                "https://seekingalpha.com/earnings/earnings-calendar",
+                "https://www.cnbc.com/earnings/"
+            ],
+            "prompt": "Monitor earnings reports, analyst upgrades/downgrades, and guidance changes for tech stocks. Alert on earnings beats/misses, revenue surprises, or significant analyst rating changes.",
+            "frequency_minutes": 30,
+            "threshold_score": 80,
+            "category": "Investing"
+        }
+    ]
+    
+    return {"templates": templates}
 
 @app.post("/alerts/{alert_id}/acknowledge")
 async def acknowledge_alert_endpoint(
