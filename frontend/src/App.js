@@ -1,13 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { AuthProvider, useAuth } from './AuthContext';
+import Login from './Login';
+import Settings from './Settings';
 import './App.css';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://duckerhub.com:8000';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
-function App() {
+const MainApp = () => {
+  const { user, logout, isAuthenticated, loading } = useAuth();
+
   const [jobs, setJobs] = useState([]);
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [currentView, setCurrentView] = useState('dashboard');
+  const [dataLoading, setDataLoading] = useState(true);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -20,8 +26,10 @@ function App() {
   });
 
   useEffect(() => {
-    fetchJobs();
-  }, []);
+    if (isAuthenticated) {
+      fetchJobs();
+    }
+  }, [isAuthenticated]);
 
   const fetchJobs = async () => {
     try {
@@ -30,7 +38,7 @@ function App() {
     } catch (error) {
       console.error('Error fetching jobs:', error);
     } finally {
-      setLoading(false);
+      setDataLoading(false);
     }
   };
 
@@ -88,11 +96,69 @@ function App() {
     );
   }
 
+  if (!isAuthenticated) {
+    return <Login />;
+  }
+
+  if (currentView === 'settings') {
+    return <Settings onBack={() => setCurrentView('dashboard')} />;
+  }
+
+  if (dataLoading) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-xl">Loading jobs...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-100">
+      {/* Navigation Header */}
+      <nav className="bg-white shadow-sm">
+        <div className="container mx-auto px-4">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center space-x-8">
+              <h1 className="text-xl font-bold text-gray-900">AI Monitoring</h1>
+              <div className="flex space-x-4">
+                <button
+                  onClick={() => setCurrentView('dashboard')}
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${
+                    currentView === 'dashboard' 
+                      ? 'bg-blue-100 text-blue-700' 
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Dashboard
+                </button>
+                <button
+                  onClick={() => setCurrentView('settings')}
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${
+                    currentView === 'settings' 
+                      ? 'bg-blue-100 text-blue-700' 
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Settings
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center space-x-4">
+              <span className="text-sm text-gray-600">Welcome, {user?.name}</span>
+              <button
+                onClick={logout}
+                className="text-sm text-red-600 hover:text-red-800"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      </nav>
+
       <div className="container mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">AI Monitoring System</h1>
+          <h2 className="text-2xl font-bold text-gray-900">Your Monitoring Jobs</h2>
           <button
             onClick={() => setShowCreateForm(true)}
             className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
@@ -252,6 +318,14 @@ function App() {
       </div>
     </div>
   );
-}
+};
+
+const App = () => {
+  return (
+    <AuthProvider>
+      <MainApp />
+    </AuthProvider>
+  );
+};
 
 export default App;

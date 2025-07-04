@@ -4,12 +4,12 @@ A comprehensive AI-powered monitoring system that tracks multiple sources and ge
 
 ## Architecture
 
-- **Frontend**: React app with Tailwind CSS
-- **API Service**: FastAPI backend with Google Auth
+- **Frontend**: React app with Tailwind CSS and Google OAuth
+- **API Service**: FastAPI backend with JWT authentication
 - **Browser Service**: Playwright-based realistic web scraping
 - **Worker Manager**: Job scheduling and processing
 - **LLM Service**: OpenAI/Claude integration for content analysis
-- **Notification Service**: Multi-channel alerting (Email, Slack, etc.)
+- **Notification Service**: User-specific multi-channel alerting
 - **Database**: PostgreSQL for persistence
 - **Queue**: Redis for job management
 
@@ -19,6 +19,7 @@ A comprehensive AI-powered monitoring system that tracks multiple sources and ge
    ```bash
    cp .env.example .env
    # Edit .env with your API keys and configuration
+   # Required: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, OPENAI_API_KEY, SENDGRID_API_KEY
    ```
 
 2. **Build and Start**:
@@ -33,9 +34,9 @@ A comprehensive AI-powered monitoring system that tracks multiple sources and ge
    ```
 
 4. **Access the Application**:
-   - Frontend: http://duckerhub.com:3000
-   - API: http://duckerhub.com:8000
-   - API Docs: http://duckerhub.com:8000/docs
+   - Frontend: http://localhost:3000
+   - API: http://localhost:8000
+   - API Docs: http://localhost:8000/docs
 
 ## Services
 
@@ -69,7 +70,7 @@ A comprehensive AI-powered monitoring system that tracks multiple sources and ge
 
 ### Notification Service (Port 8003)
 - Multi-channel alerting
-- Email and Slack notifications
+- Email and Teams notifications
 - Duplicate detection
 - Customizable thresholds
 
@@ -89,13 +90,28 @@ make clean
 make health
 ```
 
+## Authentication
+
+The system uses Google OAuth for user authentication:
+- Users sign in with their Google account
+- JWT tokens are used for API authentication
+- Each user has their own jobs and notification channels
+
+## Notification Channels
+
+Users can configure multiple notification channels:
+- **Email**: Send alerts to specific email addresses
+- **Microsoft Teams**: Send alerts to Teams channels via webhooks
+- **Slack**: Send alerts to Slack channels via webhooks
+
 ## Configuration
 
 See `.env` for required environment variables:
-- Google OAuth credentials
+- Google OAuth credentials (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET)
 - OpenAI/Anthropic API keys
-- SMTP configuration
-- Slack webhook URLs
+- SMTP configuration (SENDGRID_API_KEY)
+- JWT secret for authentication
+- Hostname configuration for flexible deployment
 
 ## Next Steps
 

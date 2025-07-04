@@ -6,6 +6,8 @@ import hashlib
 from datetime import datetime, timedelta
 import os
 import logging
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -16,15 +18,39 @@ class NotificationService:
         self.redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
         self.sendgrid_api_key = os.getenv("SENDGRID_API_KEY")
         self.notification_email = os.getenv("NOTIFICATION_EMAIL", "marcelbutucea@gmail.com")
-        self.slack_webhook = os.getenv("SLACK_WEBHOOK")
+        self.teams_webhook = os.getenv("TEAMS_WEBHOOK")
+        self.database_url = os.getenv("DATABASE_URL", "postgresql://monitoring_user:monitoring_pass@localhost:5432/monitoring_db")
         self.running = True
         
         logger.info(f"SendGrid key configured: {'Yes' if self.sendgrid_api_key else 'No'}")
+        logger.info(f"Teams webhook configured: {'Yes' if self.teams_webhook else 'No'}")
         logger.info(f"Notification email: {self.notification_email}")
         
         # Deduplication settings
         self.dedup_window_hours = 6
+    
+    def get_db_connection(self):
+        """Get database connection"""
+        return psycopg2.connect(self.database_url, cursor_factory=RealDictCursor)
+    
+    def get_user_notification_channels(self, user_id):
+        """Get user's notification channels"""
+        with self.get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT * FROM notification_channels WHERE user_id = %s AND is_active = true",
+                    (user_id,)
+                )
+                return cur.fetchall()
         
+    def get_job_user_id(self, job_id):
+        """Get user ID for a job"""
+        with self.get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT user_id FROM jobs WHERE id = %s", (job_id,))
+                result = cur.fetchone()
+                return result['user_id'] if result else None
+                
     def generate_alert_hash(self, alert):
         """Generate hash for alert deduplication"""
         content_string = f"{alert['job_id']}:{alert['title']}:{alert['source_url']}"
@@ -93,6 +119,222 @@ class NotificationService:
             logger.error(f"Failed to send email: {e}")
             return False
     
+    def send_teams_notification(self, title, message, source_url):
+        """Send notification to Microsoft Teams"""
+        try:
+            if not self.teams_webhook:
+                logger.warning("Teams webhook not configured, skipping Teams notification")
+                return False
+            
+            # Format Teams message card
+            payload = {
+                "@type": "MessageCard",
+                "@context": "https://schema.org/extensions",
+                "summary": title,
+                "themeColor": "FF6B35",
+                "sections": [
+                    {
+                        "activityTitle": "🚨 AI Monitoring Alert",
+                        "activitySubtitle": title,
+                        "activityText": message,
+                        "facts": [
+                            {
+                                "name": "Source",
+                                "value": source_url
+                            },
+                            {
+                                "name": "Time",
+                                "value": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            }
+                        ]
+                    }
+                ],
+                "potentialAction": [
+                    {
+                        "@type": "OpenUri",
+                        "name": "View Source",
+                        "targets": [
+                            {
+                                "os": "default",
+                                "uri": source_url
+                            }
+                        ]
+                    }
+                ]
+            }
+            
+            response = requests.post(
+                self.teams_webhook,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                logger.info("✅ Teams notification sent successfully")
+                return True
+            else:
+                logger.error(f"Teams notification failed: {response.status_code} - {response.text}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Failed to send Teams notification: {e}")
+            return False
+    
+    def send_email_to_address(self, subject, body_text, body_html, email_address):
+            """Send email to specific address"""
+            try:
+                if not self.sendgrid_api_key:
+                    logger.error("SendGrid API key not configured!")
+                    return False
+                
+                logger.info(f"Sending email to {email_address}")
+                
+                # SendGrid API payload
+                payload = {
+                    "personalizations": [
+                        {
+                            "to": [{"email": email_address}]
+                        }
+                    ],
+                    "from": {"email": self.notification_email},
+                    "subject": subject,
+                    "content": [
+                        {"type": "text/plain", "value": body_text}
+                    ]
+                }
+                
+                # Add HTML content if provided
+                if body_html:
+                    payload["content"].append({"type": "text/html", "value": body_html})
+                
+                # Send request
+                response = requests.post(
+                    "https://api.sendgrid.com/v3/mail/send",
+                    headers={
+                        "Authorization": f"Bearer {self.sendgrid_api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json=payload,
+                    timeout=10
+                )
+                
+                if response.status_code == 202:
+                    logger.info(f"✅ Email sent successfully to {email_address}")
+                    return True
+                else:
+                    logger.error(f"SendGrid error: {response.status_code} - {response.text}")
+                    return False
+                    
+            except Exception as e:
+                logger.error(f"Failed to send email to {email_address}: {e}")
+                return False
+        
+    def send_teams_notification_to_webhook(self, title, message, source_url, webhook_url):
+            """Send notification to specific Teams webhook"""
+            try:
+                # Format Teams message card
+                payload = {
+                    "@type": "MessageCard",
+                    "@context": "https://schema.org/extensions",
+                    "summary": title,
+                    "themeColor": "FF6B35",
+                    "sections": [
+                        {
+                            "activityTitle": "🚨 AI Monitoring Alert",
+                            "activitySubtitle": title,
+                            "activityText": message,
+                            "facts": [
+                                {
+                                    "name": "Source",
+                                    "value": source_url
+                                },
+                                {
+                                    "name": "Time",
+                                    "value": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                }
+                            ]
+                        }
+                    ],
+                    "potentialAction": [
+                        {
+                            "@type": "OpenUri",
+                            "name": "View Source",
+                            "targets": [
+                                {
+                                    "os": "default",
+                                    "uri": source_url
+                                }
+                            ]
+                        }
+                    ]
+                }
+                
+                response = requests.post(
+                    webhook_url,
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    logger.info("✅ Teams notification sent successfully")
+                    return True
+                else:
+                    logger.error(f"Teams notification failed: {response.status_code} - {response.text}")
+                    return False
+                    
+            except Exception as e:
+                logger.error(f"Failed to send Teams notification: {e}")
+                return False
+        
+    def send_slack_notification(self, title, message, source_url, webhook_url):
+            """Send notification to Slack webhook"""
+            try:
+                payload = {
+                    "text": f"🚨 *{title}*",
+                    "attachments": [
+                        {
+                            "color": "danger",
+                            "fields": [
+                                {
+                                    "title": "Message",
+                                    "value": message,
+                                    "short": False
+                                },
+                                {
+                                    "title": "Source",
+                                    "value": f"<{source_url}|View Source>",
+                                    "short": True
+                                },
+                                {
+                                    "title": "Time",
+                                    "value": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                    "short": True
+                                }
+                            ]
+                        }
+                    ]
+                }
+                
+                response = requests.post(
+                    webhook_url,
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    logger.info("✅ Slack notification sent successfully")
+                    return True
+                else:
+                    logger.error(f"Slack notification failed: {response.status_code} - {response.text}")
+                    return False
+                    
+            except Exception as e:
+                logger.error(f"Failed to send Slack notification: {e}")
+                return False
+    
     def format_alert_content(self, alert):
         """Format alert content for notifications"""
         text_content = f"""
@@ -138,19 +380,59 @@ Your AI Monitoring System found this relevant content!
             logger.info(f"Skipping duplicate alert: {alert['title']}")
             return
         
+        # Get user ID for this job
+        user_id = self.get_job_user_id(alert['job_id'])
+        if not user_id:
+            logger.error(f"No user found for job {alert['job_id']}")
+            return
+        
+        # Get user's notification channels
+        channels = self.get_user_notification_channels(user_id)
+        if not channels:
+            logger.warning(f"No notification channels configured for user {user_id}")
+            return
+        
         # Format content
         text_content, html_content = self.format_alert_content(alert)
         
-        # Send email notification
-        email_subject = f"🚨 AI Alert: {alert['title']}"
-        email_sent = self.send_sendgrid_email(email_subject, text_content, html_content)
+        # Send notifications through user's configured channels
+        notifications_sent = {
+            'email': 0,
+            'teams': 0,
+            'slack': 0
+        }
         
-        # Mark alert as processed (store as strings only)
+        for channel in channels:
+            channel_config = channel['config'] if isinstance(channel['config'], dict) else json.loads(channel['config']) if channel['config'] else {}
+            
+            if channel['channel_type'] == 'email':
+                email_address = channel_config.get('email', self.notification_email)
+                email_subject = f"🚨 AI Alert: {alert['title']}"
+                if self.send_email_to_address(email_subject, text_content, html_content, email_address):
+                    notifications_sent['email'] += 1
+                    
+            elif channel['channel_type'] == 'teams':
+                webhook_url = channel_config.get('webhook_url')
+                if webhook_url and self.send_teams_notification_to_webhook(
+                    alert['title'], alert['content'], alert['source_url'], webhook_url
+                ):
+                    notifications_sent['teams'] += 1
+                    
+            elif channel['channel_type'] == 'slack':
+                webhook_url = channel_config.get('webhook_url')
+                if webhook_url and self.send_slack_notification(
+                    alert['title'], alert['content'], alert['source_url'], webhook_url
+                ):
+                    notifications_sent['slack'] += 1
+        
+        # Mark alert as processed
         processed_alert = {
             'job_id': str(alert['job_id']),
             'title': str(alert['title']),
             'processed_at': datetime.now().isoformat(),
-            'email_sent': 'true' if email_sent else 'false',
+            'email_sent': str(notifications_sent['email']),
+            'teams_sent': str(notifications_sent['teams']),
+            'slack_sent': str(notifications_sent['slack']),
             'relevance_score': str(alert['relevance_score'])
         }
         
@@ -159,11 +441,12 @@ Your AI Monitoring System found this relevant content!
         except Exception as e:
             logger.warning(f"Could not store processed alert: {e}")
         
-        logger.info(f"Alert processed - Email sent: {email_sent}")
+        total_sent = sum(notifications_sent.values())
+        logger.info(f"Alert processed - {total_sent} notifications sent: {notifications_sent}")
     
     def run_processor(self):
         """Main alert processing loop"""
-        logger.info("Notification Service started with SendGrid")
+        logger.info("Notification Service started with SendGrid and Teams")
         
         while self.running:
             try:

@@ -36,6 +36,7 @@ services:
       - REDIS_URL=redis://redis:6379
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - JWT_SECRET=${JWT_SECRET:-your-secret-key-change-in-production}
     depends_on:
       - postgres
       - redis
@@ -72,6 +73,7 @@ services:
       - REDIS_URL=redis://redis:6379
       - BROWSER_SERVICE_URL=http://browser_service:8001
       - LLM_SERVICE_URL=http://llm_service:8002
+      - HOSTNAME=${HOSTNAME:-localhost}
     depends_on:
       - postgres
       - redis
@@ -107,7 +109,7 @@ services:
       - REDIS_URL=redis://redis:6379
       - SENDGRID_API_KEY=${SENDGRID_API_KEY}
       - NOTIFICATION_EMAIL=${NOTIFICATION_EMAIL}
-      - SLACK_WEBHOOK=${SLACK_WEBHOOK}
+      - TEAMS_WEBHOOK=${TEAMS_WEBHOOK}
     depends_on:
       - postgres
       - redis
@@ -122,7 +124,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - REACT_APP_API_URL=http://duckerhub.com:8000
+      - REACT_APP_API_URL=http://${HOSTNAME:-localhost}:8000
       - REACT_APP_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
     depends_on:
       - api_service

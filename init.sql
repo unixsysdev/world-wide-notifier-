@@ -62,6 +62,17 @@ CREATE TABLE source_health (
     consecutive_failures INTEGER DEFAULT 0
 );
 
+-- Notification channels table
+CREATE TABLE notification_channels (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    channel_type VARCHAR(50) NOT NULL, -- email, teams, slack, etc.
+    config JSONB NOT NULL, -- Channel-specific configuration
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes for performance
 CREATE INDEX idx_jobs_user_id ON jobs(user_id);
 CREATE INDEX idx_jobs_active ON jobs(is_active);
@@ -69,3 +80,4 @@ CREATE INDEX idx_job_runs_job_id ON job_runs(job_id);
 CREATE INDEX idx_alerts_job_id ON alerts(job_id);
 CREATE INDEX idx_alerts_created_at ON alerts(created_at);
 CREATE INDEX idx_source_health_url ON source_health(source_url);
+CREATE INDEX idx_notification_channels_user_id ON notification_channels(user_id);

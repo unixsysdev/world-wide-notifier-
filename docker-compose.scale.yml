@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  # Scale worker manager horizontally
+  worker_manager:
+    deploy:
+      replicas: 3
+    environment:
+      - DATABASE_URL=postgresql://monitoring_user:monitoring_pass@postgres:5432/monitoring_db
+      - REDIS_URL=redis://redis:6379
+      - BROWSER_SERVICE_URL=http://browser_service:8001
+      - LLM_SERVICE_URL=http://llm_service:8002
+      - HOSTNAME=${HOSTNAME:-localhost}
+      - MAX_CONCURRENT_JOBS=50
+      - MAX_CONCURRENT_SOURCES=10
+      - JOB_BATCH_SIZE=100
+    depends_on:
+      - postgres
+      - redis
+      - browser_service
+      - llm_service
+    volumes:
+      - ./worker_manager:/app
+    networks:
+      - monitoring_net
+
+  # Scale browser service for high load (remove port binding for replicas)
+  browser_service:
+    deploy:
+      replicas: 2
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - MAX_CONCURRENT_SCRAPES=20
+    depends_on:
+      - redis
+    volumes:
+      - browser_data:/app/browser_data
+    networks:
+      - monitoring_net
+    ports: []  # Remove port binding for scaling
+
+  # Scale LLM service (remove port binding for replicas)
+  llm_service:
+    deploy:
+      replicas: 2
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - REDIS_URL=redis://redis:6379
+      - MAX_CONCURRENT_ANALYSIS=15
+    depends_on:
+      - redis
+    volumes:
+      - ./llm_service:/app
+    networks:
+      - monitoring_net
+    ports: []  # Remove port binding for scaling
+
+  # Use Redis cluster for high availability
+  redis:
+    deploy:
+      replicas: 1
+    volumes:
+      - redis_data:/data
+    networks:
+      - monitoring_net
+    command: redis-server --maxmemory 1gb --maxmemory-policy allkeys-lru
+
+networks:
+  monitoring_net:
+    driver: bridge
+
+volumes:
+  redis_data:
+  browser_data:
