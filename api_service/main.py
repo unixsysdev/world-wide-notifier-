@@ -1087,7 +1087,8 @@ async def get_latest_job_run(job_id: str, current_user=Depends(get_current_user)
                     "status": latest_run['status'],
                     "sources_processed": latest_run['sources_processed'],
                     "alerts_generated": latest_run['alerts_generated'],
-                    "error_message": latest_run['error_message']
+                    "error_message": latest_run['error_message'],
+                    "analysis_summary": latest_run['analysis_summary']
                 }
             }
 
