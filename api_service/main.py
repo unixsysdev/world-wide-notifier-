@@ -191,12 +191,16 @@ class JobCreate(BaseModel):
     notification_channel_ids: List[str] = []
     alert_cooldown_minutes: int = 60
     max_alerts_per_hour: int = 5
+    repeat_frequency_minutes: int = 60
+    max_repeats: int = 5
+    require_acknowledgment: bool = True
     
     @validator('frequency_minutes')
     def validate_frequency(cls, v):
         if v < 1:
             raise ValueError('Frequency must be at least 1 minute')
         return v
+
 
 
 class JobResponse(BaseModel):
@@ -277,11 +281,11 @@ def get_user_subscription_info(user_id: str):
     
     tier = user_data['subscription_tier']
     
-    # Define tier limits
+    # Define tier limits based on requirements
     tier_config = {
-        'free': {'alert_limit': 3, 'min_frequency_minutes': 60},  # Hourly
-        'premium': {'alert_limit': 10, 'min_frequency_minutes': 1},
-        'premium_plus': {'alert_limit': -1, 'min_frequency_minutes': 1}  # Unlimited
+        'free': {'alert_limit': 3, 'min_frequency_minutes': 60},  # 3 alerts/day, hourly checks
+        'premium': {'alert_limit': 100, 'min_frequency_minutes': 10},  # 100 alerts/day, 10min checks
+        'premium_plus': {'alert_limit': 999999, 'min_frequency_minutes': 1}  # Unlimited alerts, 1min checks
     }
     
     config = tier_config.get(tier, tier_config['free'])
@@ -294,6 +298,7 @@ def get_user_subscription_info(user_id: str):
         'min_frequency_minutes': config['min_frequency_minutes'],
         'stripe_customer_id': user_data['stripe_customer_id']
     }
+
 
 def can_create_job(user_id: str, frequency_minutes: int):
     """Check if user can create a job with given frequency"""
@@ -567,6 +572,7 @@ async def create_job(job: JobCreate, current_user=Depends(get_current_user)):
     # Store job in database
     with get_db_connection() as conn:
         with conn.cursor() as cur:
+            # Insert job
             cur.execute(
                 """INSERT INTO jobs (id, user_id, name, description, sources, prompt, frequency_minutes, threshold_score, 
                    notification_channel_ids, alert_cooldown_minutes, max_alerts_per_hour)
@@ -575,6 +581,16 @@ async def create_job(job: JobCreate, current_user=Depends(get_current_user)):
                  json.dumps(job.sources), job.prompt, job.frequency_minutes, job.threshold_score,
                  json.dumps(job.notification_channel_ids), job.alert_cooldown_minutes, job.max_alerts_per_hour)
             )
+            
+            # Insert job notification settings
+            cur.execute(
+                """INSERT INTO job_notification_settings (job_id, notification_channel_ids, repeat_frequency_minutes, 
+                   max_repeats, require_acknowledgment)
+                   VALUES (%s, %s, %s, %s, %s)""",
+                (job_id, json.dumps(job.notification_channel_ids), job.repeat_frequency_minutes, 
+                 job.max_repeats, job.require_acknowledgment)
+            )
+            
             conn.commit()
     
     # Also store in Redis for quick access
@@ -600,9 +616,16 @@ async def create_job(job: JobCreate, current_user=Depends(get_current_user)):
         "prompt": job.prompt,
         "frequency_minutes": job.frequency_minutes,
         "threshold_score": job.threshold_score,
+        "notification_channel_ids": job.notification_channel_ids,
+        "alert_cooldown_minutes": job.alert_cooldown_minutes,
+        "max_alerts_per_hour": job.max_alerts_per_hour,
+        "repeat_frequency_minutes": job.repeat_frequency_minutes,
+        "max_repeats": job.max_repeats,
+        "require_acknowledgment": job.require_acknowledgment,
         "is_active": True,
         "created_at": datetime.now().isoformat()
     }
+
 
 
 @app.get("/jobs")
@@ -613,10 +636,13 @@ async def get_jobs(current_user=Depends(get_current_user)):
     # Get jobs from database for the current user
     with get_db_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT * FROM jobs WHERE user_id = %s ORDER BY created_at DESC",
-                (current_user['id'],)
-            )
+            cur.execute("""
+                SELECT j.*, jns.repeat_frequency_minutes, jns.max_repeats, jns.require_acknowledgment
+                FROM jobs j
+                LEFT JOIN job_notification_settings jns ON j.id = jns.job_id
+                WHERE j.user_id = %s 
+                ORDER BY j.created_at DESC
+            """, (current_user['id'],))
             db_jobs = cur.fetchall()
     
     for job in db_jobs:
@@ -632,10 +658,14 @@ async def get_jobs(current_user=Depends(get_current_user)):
             "notification_channel_ids": job.get('notification_channel_ids', []),
             "alert_cooldown_minutes": job.get('alert_cooldown_minutes', 60),
             "max_alerts_per_hour": job.get('max_alerts_per_hour', 5),
+            "repeat_frequency_minutes": job.get('repeat_frequency_minutes', 60),
+            "max_repeats": job.get('max_repeats', 5),
+            "require_acknowledgment": job.get('require_acknowledgment', True),
             "created_at": job['created_at'].isoformat()
         })
     
     return jobs
+
 
 @app.get("/jobs/{job_id}")
 async def get_job(job_id: str, current_user=Depends(get_current_user)):
@@ -714,6 +744,113 @@ async def get_alerts(
         }
         for alert in alerts
     ]
+
+@app.get("/jobs/{job_id}/alerts")
+async def get_job_alerts(
+    job_id: str,
+    current_user=Depends(get_current_user),
+    limit: int = 50,
+    include_acknowledged: bool = False
+):
+    """Get alerts for a specific job"""
+    # First verify the job belongs to the current user
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT user_id FROM jobs WHERE id = %s",
+                (job_id,)
+            )
+            job_data = cur.fetchone()
+            
+            if not job_data:
+                raise HTTPException(status_code=404, detail="Job not found")
+            
+            if job_data['user_id'] != current_user['id']:
+                raise HTTPException(status_code=403, detail="Access denied")
+            
+            # Get alerts for this job
+            query = """
+                SELECT a.*, j.name as job_name 
+                FROM alerts a 
+                JOIN jobs j ON a.job_id = j.id 
+                WHERE a.job_id = %s
+            """
+            params = [job_id]
+            
+            if not include_acknowledged:
+                query += " AND a.is_acknowledged = FALSE"
+            
+            query += " ORDER BY a.created_at DESC LIMIT %s"
+            params.append(limit)
+            
+            cur.execute(query, params)
+            alerts = cur.fetchall()
+    
+    return [
+        {
+            "id": alert['id'],
+            "job_id": alert['job_id'],
+            "job_name": alert['job_name'],
+            "title": alert['title'],
+            "content": alert['content'],
+            "source_url": alert['source_url'],
+            "relevance_score": alert['relevance_score'],
+            "is_sent": alert['is_sent'],
+            "is_read": alert['is_read'],
+            "is_acknowledged": alert['is_acknowledged'],
+            "acknowledged_at": alert['acknowledged_at'].isoformat() if alert['acknowledged_at'] else None,
+            "repeat_count": alert['repeat_count'],
+            "next_repeat_at": alert['next_repeat_at'].isoformat() if alert['next_repeat_at'] else None,
+            "created_at": alert['created_at'].isoformat()
+        }
+        for alert in alerts
+    ]
+
+@app.get("/user/stats")
+async def get_user_stats(current_user=Depends(get_current_user)):
+    """Get user statistics for dashboard"""
+    user_id = current_user['id']
+    
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            # Get job count
+            cur.execute("SELECT COUNT(*) as job_count FROM jobs WHERE user_id = %s", (user_id,))
+            job_count = cur.fetchone()['job_count']
+            
+            # Get active job count
+            cur.execute("SELECT COUNT(*) as active_jobs FROM jobs WHERE user_id = %s AND is_active = TRUE", (user_id,))
+            active_jobs = cur.fetchone()['active_jobs']
+            
+            # Get alert statistics
+            cur.execute("""
+                SELECT 
+                    COUNT(*) as total_alerts,
+                    COUNT(CASE WHEN is_acknowledged = FALSE THEN 1 END) as unack_alerts,
+                    COUNT(CASE WHEN created_at >= NOW() - INTERVAL '24 hours' THEN 1 END) as alerts_24h,
+                    COUNT(CASE WHEN created_at >= NOW() - INTERVAL '7 days' THEN 1 END) as alerts_7d
+                FROM alerts a
+                JOIN jobs j ON a.job_id = j.id
+                WHERE j.user_id = %s
+            """, (user_id,))
+            alert_stats = cur.fetchone()
+            
+            # Get subscription info
+            subscription_info = get_user_subscription_info(user_id)
+    
+    return {
+        "jobs": {
+            "total": job_count,
+            "active": active_jobs,
+            "inactive": job_count - active_jobs
+        },
+        "alerts": {
+            "total": alert_stats['total_alerts'],
+            "unacknowledged": alert_stats['unack_alerts'],
+            "last_24_hours": alert_stats['alerts_24h'],
+            "last_7_days": alert_stats['alerts_7d']
+        },
+        "subscription": subscription_info
+    }
 
 @app.post("/alerts/{alert_id}/acknowledge")
 async def acknowledge_alert_endpoint(
@@ -814,8 +951,8 @@ async def create_stripe_session(
                 'quantity': 1,
             }],
             mode='subscription',
-            success_url='http://localhost:3000/success?session_id={CHECKOUT_SESSION_ID}',
-            cancel_url='http://localhost:3000/',
+            success_url=f'{os.getenv("FRONTEND_URL", "http://localhost:3000")}/success?session_id={{CHECKOUT_SESSION_ID}}',
+            cancel_url=f'{os.getenv("FRONTEND_URL", "http://localhost:3000")}/',
             metadata={
                 'user_id': current_user['id'],
                 'tier': upgrade_request.tier
