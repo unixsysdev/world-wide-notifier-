@@ -368,7 +368,6 @@ const MainApp = () => {
     try {
       const response = await axios.get(`${API_URL}/jobs/${jobId}/latest-run`);
       const runData = response.data.latest_run;
-      console.log("DEBUG: Latest run data:", runData);      if (runData) {
         const status = runData.status || 'unknown';
         const sourcesProcessed = runData.sources_processed || 0;
         const alertsGenerated = runData.alerts_generated || 0;
@@ -377,9 +376,7 @@ const MainApp = () => {
         
         // Extract LLM analysis results
         let analysisInfo = "\\n\\n⚠️ No analysis summary available - this may be an older job run";
-        console.log("DEBUG: No analysis summary, runData.analysis_summary:", runData.analysis_summary);
         if (runData.analysis_summary) {
-          console.log("DEBUG: Analysis summary found:", runData.analysis_summary);
           try {
             const analysis = typeof runData.analysis_summary === "string" 
               ? JSON.parse(runData.analysis_summary) 

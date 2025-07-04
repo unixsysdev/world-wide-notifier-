@@ -1014,7 +1014,9 @@ async def get_job_runs(job_id: str, limit: int = 10, current_user=Depends(get_cu
                     jr.error_message,
                     jr.analysis_summary
                 FROM job_runs jr
-                WHERE jr.job_id = %s
+                WHERE jr.job_id = %s 
+                AND jr.status = 'completed'
+                AND jr.analysis_summary IS NOT NULL
                 ORDER BY jr.started_at DESC
                 LIMIT %s
             """, (job_id, limit))
@@ -1052,7 +1054,7 @@ async def get_latest_job_run(job_id: str, current_user=Depends(get_current_user)
             if job_data['user_id'] != current_user['id']:
                 raise HTTPException(status_code=403, detail="Access denied")
             
-            # Get latest job run
+            # Get latest completed job run with analysis data
             cur.execute("""
                 SELECT 
                     jr.id,
@@ -1064,7 +1066,9 @@ async def get_latest_job_run(job_id: str, current_user=Depends(get_current_user)
                     jr.error_message,
                     jr.analysis_summary
                 FROM job_runs jr
-                WHERE jr.job_id = %s
+                WHERE jr.job_id = %s 
+                AND jr.status = 'completed'
+                AND jr.analysis_summary IS NOT NULL
                 ORDER BY jr.started_at DESC
                 LIMIT 1
             """, (job_id,))
