@@ -14,6 +14,7 @@ from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import stripe
 
 app = FastAPI(title="AI Monitoring API", version="1.0.0")
 
@@ -29,6 +30,15 @@ app.add_middleware(
 # Redis connection
 redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
 
+# Stripe configuration
+STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY")
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")  
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+STRIPE_PREMIUM_PRICE_ID = os.getenv("STRIPE_PREMIUM_PRICE_ID")
+STRIPE_PREMIUM_PLUS_PRICE_ID = os.getenv("STRIPE_PREMIUM_PLUS_PRICE_ID")
+
+if STRIPE_SECRET_KEY:
+    stripe.api_key = STRIPE_SECRET_KEY
 # Database connection
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://monitoring_user:monitoring_pass@localhost:5432/monitoring_db")
 
@@ -682,15 +692,141 @@ async def get_subscription_info(current_user=Depends(get_current_user)):
     return subscription
 
 @app.post("/subscription/upgrade")
-async def create_stripe_session(current_user=Depends(get_current_user)):
+async def create_stripe_session(request: dict, current_user=Depends(get_current_user)):
     """Create Stripe checkout session for subscription upgrade"""
-    # TODO: Implement Stripe integration
-    # For now, return placeholder
-    return {
-        "checkout_url": "https://billing.stripe.com/p/login/test_placeholder",
-        "message": "Stripe integration coming soon"
-    }
+    if not STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=500, detail="Stripe not configured")
+    
+    try:
+        tier = request.get("tier", "premium")
+        price_id = STRIPE_PREMIUM_PRICE_ID if tier == "premium" else STRIPE_PREMIUM_PLUS_PRICE_ID
+        
+        if not price_id:
+            raise HTTPException(status_code=500, detail="Price ID not configured")
+        
+        # Create or get Stripe customer
+        customer_id = current_user.get('stripe_customer_id')
+        if not customer_id:
+            customer = stripe.Customer.create(
+                email=current_user['email'],
+                name=current_user['name']
+            )
+            customer_id = customer.id
+            
+            # Update user with customer ID
+            with get_db_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE users SET stripe_customer_id = %s WHERE id = %s",
+                        (customer_id, current_user['id'])
+                    )
+                    conn.commit()
+        
+        # Create checkout session
+        session = stripe.checkout.Session.create(
+            customer=customer_id,
+            payment_method_types=['card'],
+            line_items=[{
+                'price': price_id,
+                'quantity': 1,
+            }],
+            mode='subscription',
+            success_url=f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/dashboard?success=true",
+            cancel_url=f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/dashboard?cancelled=true",
+            metadata={
+                'user_id': current_user['id'],
+                'tier': tier
+            }
+        )
+        
+        return {"checkout_url": session.url}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Stripe error: {str(e)}")
 
+@app.post("/webhook/stripe")
+async def stripe_webhook(request: Request):
+    """Handle Stripe webhook events"""
+    if not STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(status_code=500, detail="Webhook secret not configured")
+    
+    payload = await request.body()
+    sig_header = request.headers.get('stripe-signature')
+    
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, STRIPE_WEBHOOK_SECRET
+        )
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid payload")
+    except stripe.error.SignatureVerificationError:
+        raise HTTPException(status_code=400, detail="Invalid signature")
+    
+    # Handle the event
+    if event['type'] == 'checkout.session.completed':
+        session = event['data']['object']
+        user_id = session['metadata']['user_id']
+        tier = session['metadata']['tier']
+        
+        # Update user subscription
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE users 
+                    SET subscription_tier = %s, subscription_status = 'active'
+                    WHERE id = %s
+                """, (tier, user_id))
+                conn.commit()
+                
+    elif event['type'] == 'customer.subscription.updated':
+        subscription = event['data']['object']
+        customer_id = subscription['customer']
+        status = subscription['status']
+        
+        # Update user subscription status
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE users 
+                    SET subscription_status = %s
+                    WHERE stripe_customer_id = %s
+                """, (status, customer_id))
+                conn.commit()
+                
+    elif event['type'] == 'customer.subscription.deleted':
+        subscription = event['data']['object']
+        customer_id = subscription['customer']
+        
+        # Downgrade to free tier
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE users 
+                    SET subscription_tier = 'free', subscription_status = 'cancelled'
+                    WHERE stripe_customer_id = %s
+                """, (customer_id,))
+                conn.commit()
+    
+    return {"status": "success"}
+
+@app.post("/subscription/portal")
+async def create_customer_portal(current_user=Depends(get_current_user)):
+    """Create Stripe customer portal session"""
+    if not STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=500, detail="Stripe not configured")
+    
+    customer_id = current_user.get('stripe_customer_id')
+    if not customer_id:
+        raise HTTPException(status_code=400, detail="No subscription found")
+    
+    try:
+        session = stripe.billing_portal.Session.create(
+            customer=customer_id,
+            return_url=f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/dashboard"
+        )
+        return {"portal_url": session.url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Stripe error: {str(e)}")
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
