@@ -384,9 +384,9 @@ const MainApp = () => {
               : runData.analysis_summary;
             
             if (analysis.analysis_results && analysis.analysis_results.length > 0) {
-              analysisInfo = "\n\n🤖 LLM Analysis Results:\n";
+              analysisInfo = "\n\n🤖 COMPLETE LLM ANALYSIS:\n";
               analysis.analysis_results.forEach((result, idx) => {
-                analysisInfo += `\nSource ${idx + 1}:\n`;
+                analysisInfo += `\n📍 SOURCE ${idx + 1}: ${result.source_url}\n`;
                 analysisInfo += `- Score: ${result.relevance_score || "N/A"}\n`;
                 analysisInfo += `- Title: ${result.title || "N/A"}\n`;
                 analysisInfo += `- Summary: ${(result.summary || "N/A").substring(0, 200)}...\n`;
