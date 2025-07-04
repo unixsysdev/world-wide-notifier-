@@ -94,16 +94,27 @@ async def analyze_content(request: AnalysisRequest):
                 error="Insufficient content"
             )
         
-        prompt = f"""Analyze this content for relevance to the user's requirements.
+        prompt = f"""Analyze this content for relevance to the user's specific monitoring requirements.
 
 Content: {cleaned_content}
 
-User Requirements: {request.prompt}
+User's Monitoring Requirements: {request.prompt}
+
+Instructions:
+1. Carefully evaluate if the content matches what the user is specifically looking for
+2. Score based on how well the content aligns with the user's requirements (0-100)
+3. Be precise - only score highly if the content genuinely matches their criteria
+4. Consider context, keywords, topics, and overall relevance to their needs
 
 Respond with JSON:
 {{"relevance_score": 0-100, "title": "descriptive title", "summary": "brief summary", "key_points": ["point1", "point2"], "confidence": 0.0-1.0}}
 
-Focus on finding AI, technology, and innovation content. If the content mentions artificial intelligence, machine learning, neural networks, or tech developments, score it highly."""
+Scoring Guidelines:
+- 90-100: Perfect match for user requirements
+- 70-89: Good match with most criteria met
+- 50-69: Partial match, some relevance
+- 30-49: Minimal relevance
+- 0-29: No relevance or off-topic"""
         
         # Call OpenRouter API
         headers = {
