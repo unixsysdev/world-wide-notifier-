@@ -1,5 +1,5 @@
 # Development commands
-.PHONY: build up down logs clean generate-keys
+.PHONY: build up down logs clean generate-keys prod-setup
 
 # Build all services
 build:
@@ -35,6 +35,33 @@ generate-keys:
 	@echo "# Add these to your .env file for production:"
 	@echo "JWT_SECRET=$$(openssl rand -base64 32)"
 	@echo "INTERNAL_API_KEY=$$(openssl rand -base64 32)"
+
+# Production setup helper
+prod-setup:
+	@echo "🚀 Production Setup Instructions:"
+	@echo ""
+	@echo "1. Generate secure keys:"
+	@echo "   make generate-keys"
+	@echo ""
+	@echo "2. Create .env file:"
+	@echo "   cp .env.example .env"
+	@echo "   nano .env"
+	@echo ""
+	@echo "3. Set production values in .env:"
+	@echo "   HOSTNAME=mon.duckerhub.com"
+	@echo "   API_URL=https://mon.duckerhub.com/api"
+	@echo "   JWT_SECRET=your_generated_secret"
+	@echo "   INTERNAL_API_KEY=your_generated_key"
+	@echo "   # ... add your other API keys"
+	@echo ""
+	@echo "4. Setup nginx:"
+	@echo "   sudo ./setup-nginx.sh"
+	@echo ""
+	@echo "5. Start services:"
+	@echo "   make up"
+	@echo ""
+	@echo "6. Test:"
+	@echo "   curl https://mon.duckerhub.com/api/health"
 
 # Check service health
 health:

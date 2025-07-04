@@ -1,5 +1,8 @@
 version: '3.8'
 
+# Single secure deployment - works for both local and production
+# Just change HOSTNAME in .env file
+
 services:
   # Database
   postgres:
@@ -129,7 +132,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - REACT_APP_API_URL=http://${HOSTNAME:-localhost}:8000
+      - REACT_APP_API_URL=${API_URL:-http://localhost:8000}
       - REACT_APP_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
     depends_on:
       - api_service
