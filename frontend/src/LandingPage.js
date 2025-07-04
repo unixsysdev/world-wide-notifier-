@@ -13,15 +13,19 @@ const LandingPage = ({ onShowLogin }) => {
         const THREE = await import('three');
       const scene = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      const renderer = new THREE.WebGLRenderer({ 
+        alpha: true, 
+        antialias: false, // Disable antialiasing for better performance
+        powerPreference: "low-power" // Use integrated graphics when available
+      });
       
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.setClearColor(0x000000, 0); // Transparent background
       mountRef.current.appendChild(renderer.domElement);
 
-      // Create floating particles
+      // Create floating particles (reduced count for performance)
       const particlesGeometry = new THREE.BufferGeometry();
-      const particlesCount = 150;
+      const particlesCount = 80; // Reduced from 150
       const posArray = new Float32Array(particlesCount * 3);
 
       for (let i = 0; i < particlesCount * 3; i++) {
@@ -40,9 +44,9 @@ const LandingPage = ({ onShowLogin }) => {
       const particlesMesh = new THREE.Points(particlesGeometry, particlesMaterial);
       scene.add(particlesMesh);
 
-      // Create floating geometric shapes
+      // Create floating geometric shapes (reduced count)
       const shapes = [];
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 5; i++) { // Reduced from 8
         const geometry = Math.random() > 0.5 
           ? new THREE.BoxGeometry(0.2, 0.2, 0.2)
           : new THREE.SphereGeometry(0.15, 8, 6);
@@ -65,25 +69,49 @@ const LandingPage = ({ onShowLogin }) => {
 
       camera.position.z = 5;
 
-      // Animation loop
-      const animate = () => {
+      // Animation loop with performance optimizations
+      let lastTime = 0;
+      let isScrolling = false;
+      let scrollTimeout;
+      const targetFPS = 30; // Reduce from 60fps to 30fps
+      const frameInterval = 1000 / targetFPS;
+      
+      // Pause animation during scroll for better performance
+      const handleScroll = () => {
+        isScrolling = true;
+        clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(() => {
+          isScrolling = false;
+        }, 150);
+      };
+      
+      window.addEventListener('scroll', handleScroll, { passive: true });
+      
+      const animate = (currentTime) => {
         requestAnimationFrame(animate);
+        
+        // Skip animation during scroll
+        if (isScrolling) return;
+        
+        // Throttle animation to 30fps for better performance
+        if (currentTime - lastTime < frameInterval) return;
+        lastTime = currentTime;
 
-        // Rotate particles
-        particlesMesh.rotation.x += 0.001;
-        particlesMesh.rotation.y += 0.002;
+        // Rotate particles (slower)
+        particlesMesh.rotation.x += 0.0005; // Reduced from 0.001
+        particlesMesh.rotation.y += 0.001;  // Reduced from 0.002
 
-        // Animate shapes
+        // Animate shapes (less intensive)
         shapes.forEach((shape, index) => {
-          shape.rotation.x += 0.01 + index * 0.001;
-          shape.rotation.y += 0.01 + index * 0.002;
-          shape.position.y += Math.sin(Date.now() * 0.001 + index) * 0.001;
+          shape.rotation.x += 0.005 + index * 0.0005; // Reduced animation speed
+          shape.rotation.y += 0.005 + index * 0.001;
+          shape.position.y += Math.sin(Date.now() * 0.0005 + index) * 0.0005; // Slower movement
         });
 
         renderer.render(scene, camera);
       };
 
-      animate();
+      animate(0);
 
       // Handle resize
       const handleResize = () => {
@@ -97,6 +125,7 @@ const LandingPage = ({ onShowLogin }) => {
         // Cleanup
         return () => {
           window.removeEventListener('resize', handleResize);
+          window.removeEventListener('scroll', handleScroll);
           if (mountRef.current && renderer.domElement) {
             mountRef.current.removeChild(renderer.domElement);
           }
@@ -187,7 +216,7 @@ const LandingPage = ({ onShowLogin }) => {
       {/* Content */}
       <div className="relative" style={{ zIndex: 3 }}>
         {/* Header */}
-        <nav className="container mx-auto px-6 py-6">
+        <nav className="container mx-auto px-6 py-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-2">
               <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
@@ -207,11 +236,11 @@ const LandingPage = ({ onShowLogin }) => {
         </nav>
 
         {/* Hero Section */}
-        <section className="container mx-auto px-6 py-20 text-center">
-          <h1 className="text-6xl font-bold mb-8 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent leading-tight">
+        <section className="container mx-auto px-6 py-12 text-center">
+          <h1 className="text-6xl font-bold mb-6 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent leading-tight">
             Monitor Everything<br />That Matters
           </h1>
-          <p className="text-xl text-gray-700 mb-12 max-w-3xl mx-auto leading-relaxed">
+          <p className="text-xl text-gray-700 mb-8 max-w-3xl mx-auto leading-relaxed">
             AI-powered monitoring that watches the web for you. Get instant alerts when important changes happen across any website, news source, or data feed. Make faster decisions with intelligent notifications.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
@@ -228,16 +257,16 @@ const LandingPage = ({ onShowLogin }) => {
         </section>
 
         {/* Pricing Section */}
-        <section className="container mx-auto px-6 py-20">
-          <h2 className="text-4xl font-bold text-center mb-16 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+        <section className="container mx-auto px-6 py-12">
+          <h2 className="text-4xl font-bold text-center mb-10 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
             Choose Your Plan
           </h2>
           <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
             {/* Free Tier */}
             <div className="bg-white/70 backdrop-blur-sm rounded-2xl p-8 shadow-xl border border-gray-200 hover:shadow-2xl transition-all duration-300">
               <h3 className="text-2xl font-bold text-gray-900 mb-4">Free</h3>
-              <div className="text-4xl font-bold text-gray-900 mb-6">$0<span className="text-lg text-gray-600">/month</span></div>
-              <ul className="space-y-3 mb-8">
+              <div className="text-4xl font-bold text-gray-900 mb-4">$0<span className="text-lg text-gray-600">/month</span></div>
+              <ul className="space-y-2 mb-6">
                 <li className="flex items-center text-gray-700">
                   <span className="text-green-500 mr-3">✓</span>
                   3 monitoring alerts maximum
@@ -266,8 +295,8 @@ const LandingPage = ({ onShowLogin }) => {
             {/* Premium Tier */}
             <div className="bg-white/70 backdrop-blur-sm rounded-2xl p-8 shadow-xl border border-gray-200 hover:shadow-2xl transition-all duration-300">
               <h3 className="text-2xl font-bold text-gray-900 mb-4">Premium</h3>
-              <div className="text-4xl font-bold text-gray-900 mb-6">$10<span className="text-lg text-gray-600">/month</span></div>
-              <ul className="space-y-3 mb-8">
+              <div className="text-4xl font-bold text-gray-900 mb-4">$10<span className="text-lg text-gray-600">/month</span></div>
+              <ul className="space-y-2 mb-6">
                 <li className="flex items-center text-gray-700">
                   <span className="text-green-500 mr-3">✓</span>
                   10 monitoring alerts maximum
@@ -303,8 +332,8 @@ const LandingPage = ({ onShowLogin }) => {
                 BEST VALUE
               </div>
               <h3 className="text-2xl font-bold text-white mb-4">Premium Plus</h3>
-              <div className="text-4xl font-bold text-white mb-6">$15<span className="text-lg text-purple-200">/month</span></div>
-              <ul className="space-y-3 mb-8">
+              <div className="text-4xl font-bold text-white mb-4">$15<span className="text-lg text-purple-200">/month</span></div>
+              <ul className="space-y-2 mb-6">
                 <li className="flex items-center text-white">
                   <span className="text-yellow-300 mr-3">✓</span>
                   Unlimited monitoring alerts
@@ -341,8 +370,8 @@ const LandingPage = ({ onShowLogin }) => {
         </section>
 
         {/* Use Cases Section */}
-        <section className="container mx-auto px-6 py-20 bg-white/30 backdrop-blur-sm">
-          <h2 className="text-4xl font-bold text-center mb-16 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+        <section className="container mx-auto px-6 py-12 bg-white/30 backdrop-blur-sm">
+          <h2 className="text-4xl font-bold text-center mb-8 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
             Powerful Use Cases
           </h2>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -365,8 +394,8 @@ const LandingPage = ({ onShowLogin }) => {
         </section>
 
         {/* Testimonials Section */}
-        <section className="container mx-auto px-6 py-20">
-          <h2 className="text-4xl font-bold text-center mb-16 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+        <section className="container mx-auto px-6 py-12">
+          <h2 className="text-4xl font-bold text-center mb-8 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
             Real Results from Real Users
           </h2>
           <div className="grid md:grid-cols-2 gap-8 max-w-6xl mx-auto">
@@ -391,10 +420,10 @@ const LandingPage = ({ onShowLogin }) => {
         </section>
 
         {/* CTA Section */}
-        <section className="container mx-auto px-6 py-20 text-center">
-          <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-3xl p-12 text-white">
-            <h2 className="text-4xl font-bold mb-6">Ready to Start Monitoring?</h2>
-            <p className="text-xl mb-8 opacity-90">
+        <section className="container mx-auto px-6 py-12 text-center">
+          <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-3xl p-8 text-white">
+            <h2 className="text-4xl font-bold mb-4">Ready to Start Monitoring?</h2>
+            <p className="text-xl mb-6 opacity-90">
               Join thousands of professionals who never miss important updates
             </p>
             <button

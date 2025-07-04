@@ -36,6 +36,9 @@ const MainApp = () => {
     require_acknowledgment: true
   });
 
+  const [editingJob, setEditingJob] = useState(null);
+  const [selectedJobFilter, setSelectedJobFilter] = useState(null);
+
   useEffect(() => {
     if (isAuthenticated) {
       fetchJobs();
@@ -87,12 +90,79 @@ const MainApp = () => {
 
   const acknowledgeAlert = async (alertId) => {
     try {
-      await axios.post(`${API_URL}/alerts/${alertId}/acknowledge`);
+      const response = await axios.post(`${API_URL}/alerts/${alertId}/acknowledge`);
+      console.log('Alert acknowledged successfully:', response.data);
       // Refresh alerts to show updated status
       fetchAlerts();
     } catch (error) {
       console.error('Error acknowledging alert:', error);
-      alert('Failed to acknowledge alert');
+      
+      if (error.response?.status === 401) {
+        alert('Authentication failed. Please login again.');
+        logout();
+      } else if (error.response?.status === 404) {
+        alert('Alert not found or already processed.');
+        fetchAlerts(); // Refresh to update the view
+      } else {
+        const errorMessage = error.response?.data?.detail || 'Failed to acknowledge alert';
+        alert(`Error: ${errorMessage}`);
+      }
+    }
+  };
+
+  // Bulk operations
+  const [selectedAlerts, setSelectedAlerts] = useState([]);
+
+  const toggleAlertSelection = (alertId) => {
+    setSelectedAlerts(prev => 
+      prev.includes(alertId) 
+        ? prev.filter(id => id !== alertId)
+        : [...prev, alertId]
+    );
+  };
+
+
+
+  const deselectAllAlerts = () => {
+    setSelectedAlerts([]);
+  };
+
+  const bulkAcknowledgeAlerts = async () => {
+    if (selectedAlerts.length === 0) {
+      alert('Please select alerts to acknowledge');
+      return;
+    }
+
+    try {
+      const response = await axios.post(`${API_URL}/alerts/bulk-acknowledge`, {
+        alert_ids: selectedAlerts
+      });
+      
+      const { acknowledged, failed } = response.data;
+      
+      if (acknowledged > 0) {
+        alert(`✅ Successfully acknowledged ${acknowledged} alerts${failed > 0 ? `, ${failed} failed` : ''}`);
+      } else {
+        alert('⚠️ No alerts were acknowledged');
+      }
+      
+      setSelectedAlerts([]);
+      fetchAlerts();
+    } catch (error) {
+      console.error('Error bulk acknowledging alerts:', error);
+      
+      if (error.response?.status === 401) {
+        alert('Authentication failed. Please login again.');
+        logout();
+      } else if (error.response?.status === 422) {
+        alert('Invalid request format. Please try again.');
+      } else if (error.response?.status === 400) {
+        const errorMessage = error.response?.data?.detail || 'Bad request';
+        alert(`Error: ${errorMessage}`);
+      } else {
+        const errorMessage = error.response?.data?.detail || error.message || 'Failed to acknowledge alerts';
+        alert(`Error: ${errorMessage}`);
+      }
     }
   };
 
@@ -140,8 +210,7 @@ const MainApp = () => {
       const jobData = {
         name: formData.name,
         description: formData.description,
-        sources: formData.sources.split('
-').filter(url => url.trim()),
+        sources: formData.sources.split('\n').filter(url => url.trim()),
         prompt: formData.prompt,
         frequency_minutes: parseInt(formData.frequency_minutes),
         threshold_score: parseInt(formData.threshold_score),
@@ -153,7 +222,11 @@ const MainApp = () => {
         require_acknowledgment: formData.require_acknowledgment !== false
       };
 
-      await axios.post(`${API_URL}/jobs`, jobData);
+      if (editingJob) {
+        await axios.put(`${API_URL}/jobs/${editingJob.id}`, jobData);
+      } else {
+        await axios.post(`${API_URL}/jobs`, jobData);
+      }
       
       // Reset form and refresh jobs
       setFormData({
@@ -170,12 +243,39 @@ const MainApp = () => {
         max_repeats: 5,
         require_acknowledgment: true
       });
+      // Reset form
+      setFormData({
+        name: '',
+        description: '',
+        sources: '',
+        prompt: '',
+        frequency_minutes: 60,
+        threshold_score: 75,
+        notification_channel_ids: [],
+        alert_cooldown_minutes: 60,
+        max_alerts_per_hour: 5,
+        repeat_frequency_minutes: 60,
+        max_repeats: 5,
+        require_acknowledgment: true
+      });
       setShowCreateForm(false);
+      setEditingJob(null);
       fetchJobs();
       
     } catch (error) {
-      console.error('Error creating job:', error);
-      alert('Failed to create job. Please try again.');
+      console.error('Error saving job:', error);
+      
+      let errorMessage = 'Failed to save job. Please try again.';
+      
+      if (error.response?.status === 403) {
+        errorMessage = error.response.data.detail || 'Permission denied. Check your subscription limits.';
+      } else if (error.response?.status === 404) {
+        errorMessage = 'Job not found. It may have been deleted.';
+      } else if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail;
+      }
+      
+      alert(errorMessage);
     }
   };
 
@@ -199,12 +299,35 @@ const MainApp = () => {
   };
 
   const deleteJob = async (jobId) => {
+    if (!window.confirm('Are you sure you want to delete this job?')) {
+      return;
+    }
     try {
       await axios.delete(`${API_URL}/jobs/${jobId}`);
       fetchJobs();
     } catch (error) {
       console.error('Error deleting job:', error);
+      alert('Failed to delete job');
     }
+  };
+
+  const editJob = (job) => {
+    setEditingJob(job);
+    setFormData({
+      name: job.name,
+      description: job.description || '',
+      sources: job.sources.join('\n'),
+      prompt: job.prompt,
+      frequency_minutes: job.frequency_minutes,
+      threshold_score: job.threshold_score,
+      notification_channel_ids: job.notification_channel_ids || [],
+      alert_cooldown_minutes: job.alert_cooldown_minutes || 60,
+      max_alerts_per_hour: job.max_alerts_per_hour || 5,
+      repeat_frequency_minutes: job.repeat_frequency_minutes || 60,
+      max_repeats: job.max_repeats || 5,
+      require_acknowledgment: job.require_acknowledgment !== false
+    });
+    setShowCreateForm(true);
   };
 
   // Helper function to get alerts for a specific job
@@ -232,6 +355,16 @@ const MainApp = () => {
     return <Settings onBack={() => setCurrentView('dashboard')} />;
   }
 
+  // Filter alerts based on selected job
+  const filteredAlerts = selectedJobFilter 
+    ? alerts.filter(alert => alert.job_id === selectedJobFilter)
+    : alerts;
+
+  // Find the selected job name for display
+  const selectedJob = selectedJobFilter 
+    ? jobs.find(job => job.id === selectedJobFilter)
+    : null;
+
   if (currentView === 'alerts') {
     return (
       <div className="min-h-screen bg-gray-100">
@@ -243,7 +376,10 @@ const MainApp = () => {
                 <h1 className="text-xl font-bold text-gray-900">AI Monitoring</h1>
                 <div className="flex space-x-4">
                   <button
-                    onClick={() => setCurrentView('dashboard')}
+                    onClick={() => {
+                      setCurrentView('dashboard');
+                      setSelectedJobFilter(null);
+                    }}
                     className="px-3 py-2 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700"
                   >
                     Dashboard
@@ -277,16 +413,64 @@ const MainApp = () => {
 
         <div className="container mx-auto px-4 py-8">
           <div className="flex justify-between items-center mb-8">
-            <h2 className="text-2xl font-bold text-gray-900">Alert Management</h2>
-            <div className="flex space-x-4">
-              {userSubscription && (
-                <div className="text-sm text-gray-600">
-                  <span className="font-medium capitalize">{userSubscription.tier}</span> Plan
-                  {userSubscription.tier === 'free' && (
-                    <span className="ml-2">({userSubscription.daily_alert_count}/{userSubscription.alert_limit} alerts today)</span>
-                  )}
+            <div className="flex items-center space-x-4">
+              <h2 className="text-3xl font-bold text-gray-900">🚨 Alert Management</h2>
+              {selectedJob && (
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm bg-blue-100 text-blue-800 px-3 py-1 rounded-full font-medium">
+                    Filtered by: {selectedJob.name}
+                  </span>
+                  <button
+                    onClick={() => setSelectedJobFilter(null)}
+                    className="text-xs text-blue-600 hover:text-blue-800 underline"
+                  >
+                    Show All Alerts
+                  </button>
                 </div>
               )}
+              {selectedAlerts.length > 0 && (
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm text-gray-600">{selectedAlerts.length} selected</span>
+                  <button
+                    onClick={bulkAcknowledgeAlerts}
+                    className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded-md text-sm font-medium"
+                  >
+                    Acknowledge Selected
+                  </button>
+                  <button
+                    onClick={deselectAllAlerts}
+                    className="bg-gray-500 hover:bg-gray-600 text-white px-3 py-1 rounded-md text-sm font-medium"
+                  >
+                    Deselect All
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center space-x-4">
+              {filteredAlerts.filter(alert => !alert.is_acknowledged).length > 0 && (
+                <button
+                  onClick={() => {
+                    const unacknowledgedAlerts = filteredAlerts.filter(alert => !alert.is_acknowledged);
+                    setSelectedAlerts(unacknowledgedAlerts.map(alert => alert.id));
+                  }}
+                  className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium"
+                >
+                  Select All {selectedJob ? 'from this Job' : 'Unacknowledged'}
+                </button>
+              )}
+              <div className="flex items-center space-x-4">
+                <div className="text-sm text-gray-600">
+                  {filteredAlerts.length} {selectedJob ? `alerts from "${selectedJob.name}"` : 'total alerts'}
+                </div>
+                {userSubscription && (
+                  <div className="text-sm text-gray-600">
+                    <span className="font-medium capitalize">{userSubscription.tier}</span> Plan
+                    {userSubscription.tier === 'free' && (
+                      <span className="ml-2">({userSubscription.daily_alert_count}/{userSubscription.alert_limit} alerts today)</span>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -296,16 +480,23 @@ const MainApp = () => {
             </div>
           ) : (
             <div className="grid gap-6">
-              {alerts.length === 0 ? (
+              {filteredAlerts.length === 0 ? (
                 <div className="text-center py-12">
-                  <h3 className="mt-2 text-sm font-medium text-gray-900">No alerts yet</h3>
-                  <p className="mt-1 text-sm text-gray-500">Alerts will appear here when your monitoring jobs detect relevant changes.</p>
+                  <h3 className="mt-2 text-sm font-medium text-gray-900">
+                    {selectedJob ? `No alerts for "${selectedJob.name}"` : 'No alerts yet'}
+                  </h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    {selectedJob 
+                      ? 'This job hasn\'t generated any alerts yet.'
+                      : 'Alerts will appear here when your monitoring jobs detect relevant changes.'
+                    }
+                  </p>
                 </div>
               ) : (
-                alerts.map((alert) => (
+                filteredAlerts.map((alert) => (
                   <div 
                     key={alert.id} 
-                    className={`bg-white overflow-hidden shadow rounded-lg border-l-4 ${
+                    className={`bg-white overflow-hidden shadow-lg rounded-xl border-l-4 transition-all hover:shadow-xl ${
                       alert.is_acknowledged 
                         ? 'border-green-400' 
                         : alert.relevance_score >= 80 
@@ -313,58 +504,95 @@ const MainApp = () => {
                           : alert.relevance_score >= 60 
                             ? 'border-yellow-400' 
                             : 'border-blue-400'
-                    }`}
+                    } ${selectedAlerts.includes(alert.id) ? 'ring-2 ring-blue-500' : ''}`}
                   >
-                    <div className="px-4 py-5 sm:p-6">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <h3 className="text-lg leading-6 font-medium text-gray-900">
-                            {alert.title}
-                          </h3>
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            alert.relevance_score >= 80 
-                              ? 'bg-red-100 text-red-800' 
-                              : alert.relevance_score >= 60 
-                                ? 'bg-yellow-100 text-yellow-800' 
-                                : 'bg-blue-100 text-blue-800'
-                          }`}>
-                            Score: {alert.relevance_score}
-                          </span>
-                          {alert.is_acknowledged && (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                              ✓ Acknowledged
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <span className="text-sm text-gray-500">
-                            {new Date(alert.created_at).toLocaleDateString()} {new Date(alert.created_at).toLocaleTimeString()}
-                          </span>
-                          {!alert.is_acknowledged && (
-                            <button
-                              onClick={() => acknowledgeAlert(alert.id)}
-                              className="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-sm"
-                            >
-                              Acknowledge
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      
-                      <p className="mt-2 text-sm text-gray-600">{alert.content}</p>
-                      
-                      <div className="mt-4 space-y-2 text-sm text-gray-500">
-                        <div>Job: {alert.job_name}</div>
-                        {alert.source_url && (
-                          <div>
-                            Source: <a href={alert.source_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">
-                              {alert.source_url}
-                            </a>
+                    <div className="px-6 py-6">
+                      <div className="flex items-start space-x-4">
+                        {/* Selection checkbox */}
+                        {!alert.is_acknowledged && (
+                          <div className="flex-shrink-0 mt-1">
+                            <input
+                              type="checkbox"
+                              checked={selectedAlerts.includes(alert.id)}
+                              onChange={() => toggleAlertSelection(alert.id)}
+                              className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            />
                           </div>
                         )}
-                        {alert.repeat_count > 0 && (
-                          <div>Repeated {alert.repeat_count} times</div>
-                        )}
+                        
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                              <h3 className="text-xl font-bold text-gray-900 mb-2">
+                                {alert.title}
+                              </h3>
+                              <div className="flex items-center space-x-3 mb-3">
+                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                                  alert.relevance_score >= 80 
+                                    ? 'bg-red-100 text-red-800' 
+                                    : alert.relevance_score >= 60 
+                                      ? 'bg-yellow-100 text-yellow-800' 
+                                      : 'bg-blue-100 text-blue-800'
+                                }`}>
+                                  🎯 Score: {alert.relevance_score}/100
+                                </span>
+                                {alert.is_acknowledged && (
+                                  <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                                    ✅ Acknowledged
+                                  </span>
+                                )}
+                                <span className="text-sm text-gray-500">
+                                  📅 {new Date(alert.created_at).toLocaleDateString()} ⏰ {new Date(alert.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                </span>
+                              </div>
+                            </div>
+                            
+                            <div className="flex-shrink-0">
+                              {!alert.is_acknowledged && (
+                                <button
+                                  onClick={() => acknowledgeAlert(alert.id)}
+                                  className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-2 px-4 rounded-lg text-sm transition-all shadow-md hover:shadow-lg"
+                                >
+                                  ✅ Acknowledge
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          
+                          <div className="mt-4 p-4 bg-gray-50 rounded-lg border">
+                            <h4 className="text-sm font-semibold text-gray-800 mb-2">📄 Alert Summary</h4>
+                            <p className="text-sm text-gray-700 leading-relaxed">{alert.content}</p>
+                          </div>
+                          
+                          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                            <div className="flex items-center space-x-2 p-3 bg-blue-50 rounded-lg">
+                              <span className="font-semibold text-blue-800">💼 Job:</span>
+                              <span className="text-blue-700">{alert.job_name}</span>
+                            </div>
+                            
+                            {alert.source_url && (
+                              <div className="flex items-center space-x-2 p-3 bg-purple-50 rounded-lg">
+                                <span className="font-semibold text-purple-800">🔗 Source:</span>
+                                <a 
+                                  href={alert.source_url} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer" 
+                                  className="text-purple-700 hover:text-purple-900 truncate underline"
+                                  title={alert.source_url}
+                                >
+                                  {alert.source_url.length > 40 ? alert.source_url.substring(0, 40) + '...' : alert.source_url}
+                                </a>
+                              </div>
+                            )}
+                            
+                            {alert.repeat_count > 0 && (
+                              <div className="flex items-center space-x-2 p-3 bg-orange-50 rounded-lg">
+                                <span className="font-semibold text-orange-800">🔄 Repeated:</span>
+                                <span className="text-orange-700">{alert.repeat_count} times</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -445,56 +673,133 @@ const MainApp = () => {
       </nav>
 
       <div className="container mx-auto px-4 py-8">
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Your Monitoring Jobs</h2>
+        {/* Dashboard Overview Stats */}
+        <div className="mb-12">
+          <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 rounded-3xl p-8 border border-blue-100 shadow-lg">
+            <div className="flex items-center justify-between mb-6">
+              <h1 className="text-2xl font-bold text-gray-800 flex items-center">
+                <span className="mr-3 text-3xl">🚀</span>
+                <div>
+                  <div>AI Monitoring Dashboard</div>
+                  <div className="text-sm text-gray-600 font-normal">Welcome back, {user?.name}!</div>
+                </div>
+              </h1>
+              <button
+                onClick={() => setShowCreateForm(true)}
+                className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-1 flex items-center space-x-2 text-sm"
+              >
+                <span className="text-lg">➕</span>
+                <span>Create New Job</span>
+              </button>
+            </div>
+            
+            {/* Quick Stats */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+              <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
+                <div className="flex items-center space-x-3">
+                  <div className="bg-blue-100 p-3 rounded-xl">
+                    <span className="text-3xl">💼</span>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-gray-800">{jobs.length}</div>
+                    <div className="text-xs font-medium text-gray-600">Active Jobs</div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
+                <div className="flex items-center space-x-3">
+                  <div className="bg-red-100 p-3 rounded-xl">
+                    <span className="text-3xl">🚨</span>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-gray-800">{alerts.length}</div>
+                    <div className="text-xs font-medium text-gray-600">Total Alerts</div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
+                <div className="flex items-center space-x-3">
+                  <div className="bg-orange-100 p-3 rounded-xl">
+                    <span className="text-3xl">⚠️</span>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-gray-800">{alerts.filter(alert => !alert.is_acknowledged).length}</div>
+                    <div className="text-xs font-medium text-gray-600">Pending</div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
+                <div className="flex items-center space-x-3">
+                  <div className={`p-3 rounded-xl ${userSubscription?.tier === 'free' ? 'bg-yellow-100' : 'bg-green-100'}`}>
+                    <span className="text-3xl">{userSubscription?.tier === 'free' ? '🆓' : '⭐'}</span>
+                  </div>
+                  <div>
+                    <div className="text-lg font-bold text-gray-800 capitalize">{userSubscription?.tier || 'Free'}</div>
+                    <div className="text-xs font-medium text-gray-600">Current Plan</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Plan Info and Upgrade Section */}
             {userSubscription && (
-              <div className="mt-2 flex items-center space-x-4">
-                <span className="text-sm text-gray-600">
-                  <span className="font-medium capitalize">{userSubscription.tier}</span> Plan
-                </span>
-                {userSubscription.tier === 'free' && (
-                  <span className="text-sm text-gray-600">
-                    {userSubscription.daily_alert_count}/{userSubscription.alert_limit} alerts today
-                  </span>
-                )}
-                {userSubscription.tier === 'free' ? (
-                  <button
-                    onClick={showPlanSelection}
-                    className="text-sm bg-gradient-to-r from-purple-500 to-blue-600 text-white px-3 py-1 rounded-full hover:from-purple-600 hover:to-blue-700"
-                  >
-                    Upgrade Plan
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleManageSubscription}
-                    className="text-sm bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded-full"
-                  >
-                    Manage Subscription
-                  </button>
-                )}
+              <div className="mt-6 flex items-center justify-between bg-white rounded-2xl p-4 border border-gray-100">
+                <div className="flex items-center space-x-4">
+                  {userSubscription.tier === 'free' && (
+                    <div className="text-sm text-gray-600">
+                      <span className="font-semibold">Usage:</span> {userSubscription.daily_alert_count}/{userSubscription.alert_limit} alerts today
+                    </div>
+                  )}
+                </div>
+                <div className="flex space-x-3">
+                  {userSubscription.tier === 'free' ? (
+                    <button
+                      onClick={showPlanSelection}
+                      className="bg-gradient-to-r from-purple-500 to-pink-600 text-white px-6 py-2 rounded-xl hover:from-purple-600 hover:to-pink-700 transition-all font-medium shadow-md hover:shadow-lg"
+                    >
+                      🚀 Upgrade Plan
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleManageSubscription}
+                      className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-6 py-2 rounded-xl hover:from-green-600 hover:to-emerald-700 transition-all font-medium shadow-md hover:shadow-lg"
+                    >
+                      ⚙️ Manage Subscription
+                    </button>
+                  )}
+                </div>
               </div>
             )}
           </div>
-          <button
-            onClick={() => setShowCreateForm(true)}
-            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
-          >
-            Create New Job
-          </button>
+        </div>
+
+        {/* Jobs Section Header */}
+        <div className="flex justify-between items-center mb-8">
+          <h2 className="text-xl font-bold text-gray-900 flex items-center">
+            <span className="mr-2">💼</span> Your Monitoring Jobs
+          </h2>
+          <div className="text-sm text-gray-500">
+            {jobs.length} {jobs.length === 1 ? 'job' : 'jobs'} configured
+          </div>
         </div>
 
         {/* Create Job Form */}
         {showCreateForm && (
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-            <div className="relative top-10 mx-auto p-6 border w-11/12 md:w-4/5 lg:w-3/4 xl:w-2/3 shadow-lg rounded-md bg-white max-h-[90vh] overflow-y-auto">
+          <div className="fixed inset-0 bg-black bg-opacity-60 overflow-y-auto h-full w-full z-50 backdrop-blur-sm">
+            <div className="relative top-10 mx-auto p-0 border-0 w-11/12 md:w-4/5 lg:w-3/4 xl:w-2/3 shadow-2xl rounded-2xl bg-white max-h-[90vh] overflow-y-auto">
               <div className="mt-3">
-                <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-xl font-bold text-gray-900">Create New Monitoring Job</h3>
+                <div className="flex justify-between items-center mb-6 bg-gradient-to-r from-blue-500 to-indigo-600 text-white p-6 rounded-t-2xl">
+                  <h3 className="text-2xl font-bold text-white flex items-center">
+                    <span className="mr-3">{editingJob ? '✏️' : '🚀'}</span> 
+                    {editingJob ? 'Edit Monitoring Job' : 'Create New Monitoring Job'}
+                  </h3>
                   <button
                     type="button"
                     onClick={() => setShowCreateForm(false)}
-                    className="text-gray-400 hover:text-gray-600"
+                    className="text-white hover:text-gray-200 transition-colors duration-200 p-2 rounded-full hover:bg-white hover:bg-opacity-20"
                   >
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -502,59 +807,64 @@ const MainApp = () => {
                   </button>
                 </div>
                 
-                <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="p-6">
+                <form onSubmit={handleSubmit} className="space-y-8">
                   {/* Basic Information */}
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h4 className="font-semibold text-gray-900 mb-3">Basic Information</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">
+                    <h4 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+                      <span className="mr-2">📝</span> Basic Information
+                    </h4>
+                    <div className="space-y-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Job Name *</label>
+                        <label className="block text-sm font-semibold text-gray-800 mb-1">Job Name *</label>
                         <input
                           type="text"
                           name="name"
                           value={formData.name}
                           onChange={handleInputChange}
                           required
-                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="mt-1 block w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Description</label>
+                        <label className="block text-sm font-semibold text-gray-800 mb-1">Description</label>
                         <input
                           type="text"
                           name="description"
                           value={formData.description}
                           onChange={handleInputChange}
-                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="mt-1 block w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300"
                         />
                       </div>
                     </div>
                   </div>
 
                   {/* Sources and Monitoring */}
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h4 className="font-semibold text-gray-900 mb-3">Sources & Monitoring</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">
+                    <h4 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+                      <span className="mr-2">🔍</span> Sources & Monitoring
+                    </h4>
+                    <div className="space-y-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Sources (one per line) *</label>
+                        <label className="block text-sm font-semibold text-gray-800 mb-1">Sources (one per line) *</label>
                         <textarea
                           name="sources"
                           value={formData.sources}
                           onChange={handleInputChange}
                           required
-                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="mt-1 block w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300"
                           rows="3"
                           placeholder="https://example.com/news&#10;https://another-site.com/feed"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Analysis Prompt *</label>
+                        <label className="block text-sm font-semibold text-gray-800 mb-1">Analysis Prompt *</label>
                         <textarea
                           name="prompt"
                           value={formData.prompt}
                           onChange={handleInputChange}
                           required
-                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="mt-1 block w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300"
                           rows="3"
                           placeholder="Analyze this content for anything that could impact oil prices..."
                         />
@@ -563,11 +873,13 @@ const MainApp = () => {
                   </div>
 
                   {/* Frequency and Thresholds */}
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h4 className="font-semibold text-gray-900 mb-3">Frequency & Thresholds</h4>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">
+                    <h4 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+                      <span className="mr-2">⏱️</span> Frequency & Thresholds
+                    </h4>
+                    <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">
+                        <label className="block text-sm font-semibold text-gray-800 mb-1">
                           Check Frequency (minutes)
                           {userSubscription && (
                             <span className="text-xs text-gray-500 block">
@@ -581,7 +893,7 @@ const MainApp = () => {
                           value={formData.frequency_minutes}
                           onChange={handleInputChange}
                           min={userSubscription?.min_frequency_minutes || 5}
-                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="mt-1 block w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300"
                         />
                         {userSubscription?.tier === 'free' && (
                           <p className="mt-1 text-xs text-gray-500">
@@ -590,7 +902,7 @@ const MainApp = () => {
                         )}
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Alert Threshold (0-100)</label>
+                        <label className="block text-sm font-semibold text-gray-800 mb-1">Alert Threshold (0-100)</label>
                         <input
                           type="number"
                           name="threshold_score"
@@ -598,11 +910,11 @@ const MainApp = () => {
                           onChange={handleInputChange}
                           min="0"
                           max="100"
-                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="mt-1 block w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">
+                        <label className="block text-sm font-semibold text-gray-800 mb-1">
                           Alert Cooldown (minutes)
                           <span className="text-xs text-gray-500 block">
                             (prevent duplicates)
@@ -615,11 +927,11 @@ const MainApp = () => {
                           onChange={handleInputChange}
                           min="1"
                           max="1440"
-                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="mt-1 block w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">
+                        <label className="block text-sm font-semibold text-gray-800 mb-1">
                           Max Alerts/Hour
                           <span className="text-xs text-gray-500 block">
                             (rate limiting)
@@ -632,15 +944,17 @@ const MainApp = () => {
                           onChange={handleInputChange}
                           min="1"
                           max="60"
-                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="mt-1 block w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300"
                         />
                       </div>
                     </div>
                   </div>
 
                   {/* Enhanced Notification Settings */}
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h4 className="font-semibold text-gray-900 mb-3">Notification Settings</h4>
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">
+                    <h4 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+                      <span className="mr-2">🔔</span> Notification Settings
+                    </h4>
                     
                     {/* Notification Channel Selection */}
                     {channels.length > 0 ? (
@@ -658,10 +972,12 @@ const MainApp = () => {
                                 onChange={() => handleChannelSelectionChange(channel.id)}
                                 className="mr-3"
                               />
-                              <label htmlFor={`channel-${channel.id}`} className="text-sm text-gray-700 capitalize flex-1">
-                                <span className="font-medium">{channel.channel_type}</span>
+                              <label htmlFor={`channel-${channel.id}`} className="text-sm text-gray-700 flex-1">
+                                <span className="font-medium capitalize">{channel.channel_type}</span>
                                 <span className="text-gray-500 block text-xs">
-                                  {channel.config.email || channel.config.webhook_url ? 'Configured' : 'Not configured'}
+                                  {channel.config.email ? channel.config.email : 
+                                   channel.config.webhook_url ? channel.config.webhook_url.substring(0, 40) + '...' : 
+                                   'Not configured'}
                                 </span>
                               </label>
                             </div>
@@ -681,9 +997,9 @@ const MainApp = () => {
                     )}
 
                     {/* Repeat Settings */}
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
+                    <div className="grid grid-cols-2 gap-4 mt-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">
+                        <label className="block text-sm font-semibold text-gray-800 mb-1">
                           Repeat Frequency (minutes)
                           <span className="text-xs text-gray-500 block">
                             (if not acknowledged)
@@ -696,11 +1012,11 @@ const MainApp = () => {
                           onChange={handleInputChange}
                           min="5"
                           max="1440"
-                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="mt-1 block w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">
+                        <label className="block text-sm font-semibold text-gray-800 mb-1">
                           Max Repeats
                           <span className="text-xs text-gray-500 block">
                             (before stopping)
@@ -713,7 +1029,7 @@ const MainApp = () => {
                           onChange={handleInputChange}
                           min="0"
                           max="20"
-                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="mt-1 block w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300"
                         />
                       </div>
                       <div className="flex items-center">
@@ -734,96 +1050,188 @@ const MainApp = () => {
                     </div>
                   </div>
 
-                  <div className="flex justify-end space-x-4 pt-4 border-t">
+                  <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200 bg-gray-50 -mx-8 -mb-8 px-8 py-6 rounded-b-xl">
                     <button
                       type="button"
-                      onClick={() => setShowCreateForm(false)}
-                      className="px-6 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition-colors"
+                      onClick={() => {
+                      setShowCreateForm(false);
+                      setEditingJob(null);
+                      setFormData({
+                        name: '',
+                        description: '',
+                        sources: '',
+                        prompt: '',
+                        frequency_minutes: 60,
+                        threshold_score: 75,
+                        notification_channel_ids: [],
+                        alert_cooldown_minutes: 60,
+                        max_alerts_per_hour: 5,
+                        repeat_frequency_minutes: 60,
+                        max_repeats: 5,
+                        require_acknowledgment: true
+                      });
+                    }}
+                      className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-all duration-200 font-medium border border-gray-300"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      className="px-6 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+                      className="px-8 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-lg hover:from-blue-600 hover:to-indigo-700 transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
                     >
-                      Create Job
+{editingJob ? 'Update Job' : 'Create Job'}
                     </button>
                   </div>
                 </form>
-              </div>
+                </div></div>
             </div>
           </div>
         )}
 
         {/* Jobs List with Alert Integration */}
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
           {jobs.map((job) => {
             const jobAlerts = getJobAlerts(job.id);
             const unacknowledgedAlerts = getJobUnacknowledgedAlerts(job.id);
             
             return (
-              <div key={job.id} className="bg-white overflow-hidden shadow rounded-lg">
-                <div className="px-4 py-5 sm:p-6">
+              <div key={job.id} className="bg-white overflow-hidden shadow-xl rounded-2xl border border-gray-200 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2">
+                {/* Header with gradient */}
+                <div className="bg-gradient-to-br from-blue-500 via-purple-500 to-indigo-600 px-6 py-4">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-lg leading-6 font-medium text-gray-900">
-                      {job.name}
-                    </h3>
+                    <h3 className="text-xl font-bold text-white truncate">{job.name}</h3>
                     <div className="flex items-center space-x-2">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        job.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                      }`}>
-                        {job.is_active ? 'Active' : 'Inactive'}
-                      </span>
                       {unacknowledgedAlerts.length > 0 && (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                          {unacknowledgedAlerts.length} New
+                        <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full animate-pulse">
+                          {unacknowledgedAlerts.length}
                         </span>
                       )}
+                      <div className={`w-3 h-3 rounded-full ${job.is_active ? 'bg-green-400' : 'bg-gray-400'}`}></div>
                     </div>
                   </div>
-                  
-                  <p className="mt-2 text-sm text-gray-600">{job.description}</p>
-                  
-                  <div className="mt-4 space-y-2 text-sm text-gray-500">
-                    <div>Sources: {job.sources.length}</div>
-                    <div>Frequency: {job.frequency_minutes} minutes</div>
-                    <div>Threshold: {job.threshold_score}/100</div>
-                    <div className="flex items-center space-x-4">
-                      <span>Total Alerts: {jobAlerts.length}</span>
-                      {unacknowledgedAlerts.length > 0 && (
-                        <span className="text-red-600 font-medium">
-                          {unacknowledgedAlerts.length} Unacknowledged
-                        </span>
-                      )}
+                  {job.description && (
+                    <p className="text-blue-100 text-sm mt-2 line-clamp-2">{job.description}</p>
+                  )}
+                </div>
+
+                <div className="px-6 py-6">
+                  {/* Job Stats Grid */}
+                  <div className="grid grid-cols-2 gap-4 mb-6">
+                    <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-xl border border-blue-200">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-2xl">🔗</span>
+                        <div>
+                          <div className="text-2xl font-bold text-blue-800">{job.sources.length}</div>
+                          <div className="text-xs text-blue-600 font-medium">Sources</div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-xl border border-green-200">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-2xl">⏱️</span>
+                        <div>
+                          <div className="text-2xl font-bold text-green-800">{job.frequency_minutes}m</div>
+                          <div className="text-xs text-green-600 font-medium">Check Freq</div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-xl border border-purple-200">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-2xl">🎯</span>
+                        <div>
+                          <div className="text-2xl font-bold text-purple-800">{job.threshold_score}</div>
+                          <div className="text-xs text-purple-600 font-medium">Threshold</div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-4 rounded-xl border border-orange-200">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-2xl">🚨</span>
+                        <div>
+                          <div className="text-2xl font-bold text-orange-800">{jobAlerts.length}</div>
+                          <div className="text-xs text-orange-600 font-medium">Total Alerts</div>
+                        </div>
+                      </div>
                     </div>
                   </div>
+
+                  {/* Alert Status Bar */}
+                  {jobAlerts.length > 0 && (
+                    <div className="mb-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-semibold text-gray-700">Alert Status</span>
+                        <span className="text-xs text-gray-500">{jobAlerts.length} total</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                        <div 
+                          className="bg-gradient-to-r from-green-400 to-green-500 h-2 rounded-full transition-all duration-500"
+                          style={{
+                            width: `${jobAlerts.length > 0 ? ((jobAlerts.length - unacknowledgedAlerts.length) / jobAlerts.length) * 100 : 0}%`
+                          }}
+                        ></div>
+                      </div>
+                      <div className="flex justify-between text-xs text-gray-500 mt-1">
+                        <span>✅ {jobAlerts.length - unacknowledgedAlerts.length} Acknowledged</span>
+                        <span>⚠️ {unacknowledgedAlerts.length} Pending</span>
+                      </div>
+                    </div>
+                  )}
                   
                   {/* Recent Alerts Preview */}
                   {jobAlerts.length > 0 && (
-                    <div className="mt-4 border-t pt-4">
-                      <h4 className="text-sm font-medium text-gray-900 mb-2">Recent Alerts</h4>
-                      <div className="space-y-2">
+                    <div className="mt-6 border-t pt-4">
+                      <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+                        <span className="mr-2">🚨</span> Recent Alerts ({jobAlerts.length})
+                      </h4>
+                      <div className="space-y-3 max-h-60 overflow-y-auto">
                         {jobAlerts.slice(0, 3).map((alert) => (
-                          <div key={alert.id} className={`text-xs p-2 rounded ${
-                            alert.is_acknowledged ? 'bg-gray-50' : 'bg-red-50'
+                          <div key={alert.id} className={`p-3 rounded-lg border-l-4 transition-all hover:shadow-sm ${
+                            alert.is_acknowledged 
+                              ? 'bg-green-50 border-green-400' 
+                              : alert.relevance_score >= 80 
+                                ? 'bg-red-50 border-red-400' 
+                                : alert.relevance_score >= 60 
+                                  ? 'bg-yellow-50 border-yellow-400' 
+                                  : 'bg-blue-50 border-blue-400'
                           }`}>
-                            <div className="flex justify-between items-start">
-                              <div className="flex-1">
-                                <div className="font-medium">{alert.title}</div>
-                                <div className="text-gray-500 truncate">
-                                  {alert.content.substring(0, 80)}...
+                            <div className="flex justify-between items-start space-x-3">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center space-x-2 mb-1">
+                                  <h5 className="font-medium text-gray-900 text-sm truncate">{alert.title}</h5>
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                    alert.relevance_score >= 80 
+                                      ? 'bg-red-100 text-red-800' 
+                                      : alert.relevance_score >= 60 
+                                        ? 'bg-yellow-100 text-yellow-800' 
+                                        : 'bg-blue-100 text-blue-800'
+                                  }`}>
+                                    {alert.relevance_score}
+                                  </span>
+                                </div>
+                                <p className="text-gray-600 text-xs leading-relaxed line-clamp-2">
+                                  {alert.content.length > 120 ? alert.content.substring(0, 120) + '...' : alert.content}
+                                </p>
+                                <div className="flex items-center justify-between mt-2">
+                                  <span className="text-gray-400 text-xs">
+                                    {new Date(alert.created_at).toLocaleDateString()} {new Date(alert.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                  </span>
+                                  {alert.is_acknowledged && (
+                                    <span className="inline-flex items-center text-xs text-green-600">
+                                      <span className="mr-1">✓</span> Acknowledged
+                                    </span>
+                                  )}
                                 </div>
                               </div>
-                              <div className="flex items-center space-x-1 ml-2">
-                                <span className={`w-2 h-2 rounded-full ${
-                                  alert.is_acknowledged ? 'bg-green-400' : 'bg-red-400'
-                                }`}></span>
+                              <div className="flex-shrink-0">
                                 {!alert.is_acknowledged && (
                                   <button
                                     onClick={() => acknowledgeAlert(alert.id)}
-                                    className="text-xs text-blue-600 hover:text-blue-800"
+                                    className="inline-flex items-center px-2 py-1 text-xs bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors font-medium"
                                   >
-                                    Ack
+                                    <span className="mr-1">✓</span> Ack
                                   </button>
                                 )}
                               </div>
@@ -833,7 +1241,10 @@ const MainApp = () => {
                       </div>
                       {jobAlerts.length > 3 && (
                         <button
-                          onClick={() => setCurrentView('alerts')}
+                          onClick={() => {
+                            setSelectedJobFilter(job.id);
+                            setCurrentView('alerts');
+                          }}
                           className="mt-2 text-xs text-blue-600 hover:text-blue-800"
                         >
                           View all {jobAlerts.length} alerts →
@@ -842,12 +1253,30 @@ const MainApp = () => {
                     </div>
                   )}
                   
-                  <div className="mt-4 flex justify-end">
+                  {/* Action Buttons */}
+                  <div className="flex justify-between items-center pt-4 border-t border-gray-100">
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => {
+                          setSelectedJobFilter(job.id);
+                          setCurrentView('alerts');
+                        }}
+                        className="inline-flex items-center px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium"
+                      >
+                        <span className="mr-1">👁️</span> View Alerts
+                      </button>
+                      <button
+                        onClick={() => editJob(job)}
+                        className="inline-flex items-center px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+                      >
+                        <span className="mr-1">✏️</span> Edit
+                      </button>
+                    </div>
                     <button
                       onClick={() => deleteJob(job.id)}
-                      className="text-red-600 hover:text-red-900 text-sm font-medium"
+                      className="inline-flex items-center px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm font-medium"
                     >
-                      Delete
+                      <span className="mr-1">🗑️</span> Delete
                     </button>
                   </div>
                 </div>
@@ -857,9 +1286,21 @@ const MainApp = () => {
         </div>
 
         {jobs.length === 0 && (
-          <div className="text-center py-12">
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No monitoring jobs</h3>
-            <p className="mt-1 text-sm text-gray-500">Get started by creating a new monitoring job.</p>
+          <div className="text-center py-20">
+            <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-3xl p-12 border-2 border-dashed border-gray-300">
+              <div className="text-8xl mb-6">🎯</div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-4">No Monitoring Jobs Yet</h3>
+              <p className="text-lg text-gray-600 mb-8 max-w-md mx-auto">
+                Start monitoring your important sources by creating your first job. It only takes a minute!
+              </p>
+              <button
+                onClick={() => setShowCreateForm(true)}
+                className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-bold py-4 px-8 rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 flex items-center space-x-3 mx-auto text-lg"
+              >
+                <span className="text-2xl">🚀</span>
+                <span>Create Your First Job</span>
+              </button>
+            </div>
           </div>
         )}
       </div>

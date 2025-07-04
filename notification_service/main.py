@@ -70,8 +70,9 @@ class NotificationService:
         if self.redis_client.exists(recent_key):
             return True
         
-        # Mark as seen for next 6 hours
-        self.redis_client.setex(recent_key, 6 * 3600, "1")
+        # Mark as seen for configurable time period
+        cooldown_hours = int(os.getenv("ALERT_COOLDOWN_HOURS", "1"))
+        self.redis_client.setex(recent_key, cooldown_hours * 3600, "1")
         return False
     
     def send_sendgrid_email(self, subject, body_text, body_html=None):
@@ -393,7 +394,7 @@ Need help? Contact support or check your notification settings.
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f8f9fa;">
             <div style="max-width: 600px; margin: 0 auto; padding: 20px; background-color: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
                 
-                {/* Header Section */}
+                <!-- Header Section -->
                 <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 25px; border-radius: 8px 8px 0 0; margin: -20px -20px 20px -20px;">
                     <h1 style="margin: 0; font-size: 24px; font-weight: bold;">
                         🚨 AI Monitoring Alert
@@ -403,7 +404,7 @@ Need help? Contact support or check your notification settings.
                     </p>
                 </div>
                 
-                {/* Status Badge */}
+                <!-- Status Badge -->
                 <div style="text-align: center; margin: 20px 0;">
                     <span style="display: inline-block; background-color: {'#dc3545' if alert['relevance_score'] >= 80 else '#ffc107' if alert['relevance_score'] >= 60 else '#28a745'}; 
                                  color: white; padding: 8px 20px; border-radius: 20px; font-weight: bold; font-size: 16px;">
@@ -411,7 +412,7 @@ Need help? Contact support or check your notification settings.
                     </span>
                 </div>
                 
-                {/* Alert Details */}
+                <!-- Alert Details -->
                 <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #667eea;">
                     <h3 style="color: #495057; margin: 0 0 15px 0; font-size: 18px;">📊 Alert Details</h3>
                     <table style="width: 100%; border-collapse: collapse;">
@@ -438,7 +439,7 @@ Need help? Contact support or check your notification settings.
                     </table>
                 </div>
                 
-                {/* Content Section */}
+                <!-- Content Section -->
                 <div style="background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #e9ecef;">
                     <h3 style="color: #495057; margin: 0 0 15px 0; font-size: 18px;">📝 Alert Summary</h3>
                     <div style="background-color: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 4px solid #28a745;">
@@ -448,7 +449,7 @@ Need help? Contact support or check your notification settings.
                     </div>
                 </div>
                 
-                {/* Action Section */}
+                <!-- Action Section -->
                 <div style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 25px; border-radius: 8px; text-align: center; margin: 30px 0;">
                     <h3 style="margin: 0 0 15px 0; font-size: 20px;">🚀 Take Action</h3>
                     <p style="margin: 0 0 20px 0; opacity: 0.9; font-size: 14px;">
@@ -467,7 +468,7 @@ Need help? Contact support or check your notification settings.
                     </p>
                 </div>
                 
-                {/* System Status */}
+                <!-- System Status -->
                 <div style="background-color: #e9ecef; padding: 15px; border-radius: 8px; margin: 20px 0;">
                     <h4 style="color: #495057; margin: 0 0 10px 0; font-size: 14px;">🔧 System Status</h4>
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
@@ -477,7 +478,7 @@ Need help? Contact support or check your notification settings.
                     </div>
                 </div>
                 
-                {/* Footer */}
+                <!-- Footer -->
                 <div style="border-top: 1px solid #e9ecef; padding: 20px 0; margin: 30px 0 0 0; text-align: center;">
                     <p style="margin: 0 0 10px 0; color: #6c757d; font-size: 14px; font-weight: bold;">
                         🤖 AI Monitoring System - World Wide Notifier

@@ -232,6 +232,9 @@ class AlertResponse(BaseModel):
 class AlertAcknowledgeRequest(BaseModel):
     alert_id: str
 
+
+class BulkAcknowledgeRequest(BaseModel):
+    alert_ids: List[str]
 class JobNotificationSettingsCreate(BaseModel):
     notification_channel_ids: List[str] = []
     repeat_frequency_minutes: int = 60
@@ -256,8 +259,8 @@ class SubscriptionInfo(BaseModel):
 
 class StripeCheckoutRequest(BaseModel):
     price_id: str
-    success_url: str = "http://localhost:3000/success"
-    cancel_url: str = "http://localhost:3000/"
+    success_url: str = None  # Will use FRONTEND_URL env var
+    cancel_url: str = None   # Will use FRONTEND_URL env var
 
 class StripeWebhookEvent(BaseModel):
     type: str
@@ -284,7 +287,7 @@ def get_user_subscription_info(user_id: str):
     # Define tier limits based on requirements
     tier_config = {
         'free': {'alert_limit': 3, 'min_frequency_minutes': 60},  # 3 alerts/day, hourly checks
-        'premium': {'alert_limit': 100, 'min_frequency_minutes': 10},  # 100 alerts/day, 10min checks
+        'premium': {'alert_limit': 100, 'min_frequency_minutes': 1},  # 100 alerts/day, 1min checks
         'premium_plus': {'alert_limit': 999999, 'min_frequency_minutes': 1}  # Unlimited alerts, 1min checks
     }
     
@@ -434,7 +437,10 @@ def acknowledge_alert(alert_id: str, user_id: str, token: str = None):
             """, (user_id, alert_id))
             
             conn.commit()
-            return True, "Alert acknowledged successfully"@app.get("/")
+            return True, "Alert acknowledged successfully"
+
+
+@app.get("/")
 async def root():
     return {"message": "AI Monitoring API is running"}
 
@@ -626,6 +632,78 @@ async def create_job(job: JobCreate, current_user=Depends(get_current_user)):
         "created_at": datetime.now().isoformat()
     }
 
+
+@app.put("/jobs/{job_id}")
+async def update_job(job_id: str, job: JobCreate, current_user=Depends(get_current_user)):
+    """Update an existing monitoring job"""
+    
+    # Check if user can create job with this frequency (same validation as create)
+    can_create, error_message = can_create_job(current_user['id'], job.frequency_minutes)
+    if not can_create:
+        raise HTTPException(status_code=403, detail=error_message)
+    
+    # Verify job exists and belongs to user
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, user_id FROM jobs WHERE id = %s AND user_id = %s",
+                (job_id, current_user['id'])
+            )
+            existing_job = cur.fetchone()
+            
+            if not existing_job:
+                raise HTTPException(status_code=404, detail="Job not found")
+            
+            # Update job in database
+            cur.execute(
+                """UPDATE jobs SET name = %s, description = %s, sources = %s, prompt = %s, 
+                   frequency_minutes = %s, threshold_score = %s, notification_channel_ids = %s,
+                   alert_cooldown_minutes = %s, max_alerts_per_hour = %s, updated_at = CURRENT_TIMESTAMP
+                   WHERE id = %s""",
+                (job.name, job.description or "", json.dumps(job.sources), job.prompt, 
+                 job.frequency_minutes, job.threshold_score, json.dumps(job.notification_channel_ids),
+                 job.alert_cooldown_minutes, job.max_alerts_per_hour, job_id)
+            )
+            
+            # Update job notification settings
+            cur.execute(
+                """UPDATE job_notification_settings SET notification_channel_ids = %s, 
+                   repeat_frequency_minutes = %s, max_repeats = %s, require_acknowledgment = %s
+                   WHERE job_id = %s""",
+                (json.dumps(job.notification_channel_ids), job.repeat_frequency_minutes, 
+                 job.max_repeats, job.require_acknowledgment, job_id)
+            )
+            
+            conn.commit()
+    
+    # Update in Redis as well
+    redis_client.hset(f"job:{job_id}", "name", job.name)
+    redis_client.hset(f"job:{job_id}", "description", job.description or "")
+    redis_client.hset(f"job:{job_id}", "sources", json.dumps(job.sources))
+    redis_client.hset(f"job:{job_id}", "prompt", job.prompt)
+    redis_client.hset(f"job:{job_id}", "frequency_minutes", str(job.frequency_minutes))
+    redis_client.hset(f"job:{job_id}", "threshold_score", str(job.threshold_score))
+    redis_client.hset(f"job:{job_id}", "updated_at", datetime.now().isoformat())
+    
+    # Queue the job for updating (worker will restart monitoring with new settings)
+    redis_client.lpush("job_queue", json.dumps({"job_id": job_id, "action": "update"}))
+    
+    return {
+        "id": job_id,
+        "name": job.name,
+        "description": job.description,
+        "sources": job.sources,
+        "prompt": job.prompt,
+        "frequency_minutes": job.frequency_minutes,
+        "threshold_score": job.threshold_score,
+        "notification_channel_ids": job.notification_channel_ids,
+        "alert_cooldown_minutes": job.alert_cooldown_minutes,
+        "max_alerts_per_hour": job.max_alerts_per_hour,
+        "repeat_frequency_minutes": job.repeat_frequency_minutes,
+        "max_repeats": job.max_repeats,
+        "require_acknowledgment": job.require_acknowledgment,
+        "updated_at": datetime.now().isoformat()
+    }
 
 
 @app.get("/jobs")
@@ -1003,17 +1081,17 @@ async def get_user_stats(current_user=Depends(get_current_user)):
 
 @app.post("/alerts/bulk-acknowledge")
 async def bulk_acknowledge_alerts(
-    alert_ids: List[str],
+    request: BulkAcknowledgeRequest,
     current_user=Depends(get_current_user)
 ):
     """Acknowledge multiple alerts at once"""
-    if not alert_ids:
+    if not request.alert_ids:
         raise HTTPException(status_code=400, detail="No alert IDs provided")
     
     acknowledged_count = 0
     failed_count = 0
     
-    for alert_id in alert_ids:
+    for alert_id in request.alert_ids:
         success, _ = acknowledge_alert(alert_id, current_user['id'])
         if success:
             acknowledged_count += 1
@@ -1023,7 +1101,7 @@ async def bulk_acknowledge_alerts(
     return {
         "acknowledged": acknowledged_count,
         "failed": failed_count,
-        "total": len(alert_ids),
+        "total": len(request.alert_ids),
         "message": f"Acknowledged {acknowledged_count} alerts, {failed_count} failed"
     }
 
