@@ -32,6 +32,7 @@ services:
   # Main API Service
   api_service:
     build: ./api_service
+    image: monitoring_api_service
     ports:
       - "8000:8000"
     environment:
@@ -52,6 +53,7 @@ services:
   # Browser Service
   browser_service:
     build: ./browser_service
+    image: monitoring_browser_service
     ports:
       - "8001:8001"
     environment:
@@ -73,6 +75,7 @@ services:
   # Worker Manager
   worker_manager:
     build: ./worker_manager
+    image: monitoring_worker_manager
     environment:
       - DATABASE_URL=postgresql://monitoring_user:monitoring_pass@postgres:5432/monitoring_db
       - REDIS_URL=redis://redis:6379
@@ -92,6 +95,7 @@ services:
   # LLM Analysis Service
   llm_service:
     build: ./llm_service
+    image: monitoring_llm_service
     ports:
       - "8002:8002"
     environment:
@@ -109,6 +113,7 @@ services:
   # Notification Service
   notification_service:
     build: ./notification_service
+    image: monitoring_notification_service
     ports:
       - "8003:8003"
     environment:
@@ -129,6 +134,7 @@ services:
   # Frontend
   frontend:
     build: ./frontend
+    image: monitoring_frontend
     ports:
       - "3000:3000"
     environment:

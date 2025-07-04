@@ -1,5 +1,4 @@
-# Development commands
-.PHONY: build up down logs clean generate-keys prod-setup
+.PHONY: build up down logs clean generate-keys prod-setup health
 
 # Build all services
 build:
@@ -66,6 +65,6 @@ prod-setup:
 # Check service health
 health:
 	@echo "Checking service health..."
-	@curl -s http://localhost:8000/health | jq .
-	@curl -s http://localhost:8001/health | jq .
-	@curl -s http://localhost:8002/health | jq .
+	@curl -s http://localhost:8000/health | jq . || echo "❌ API Service not responding"
+	@curl -s http://localhost:8001/health | jq . || echo "❌ Browser Service not responding"
+	@curl -s http://localhost:8002/health | jq . || echo "❌ LLM Service not responding"
