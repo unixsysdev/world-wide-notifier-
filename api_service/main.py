@@ -1086,7 +1086,9 @@ async def get_latest_job_run(job_id: str, current_user=Depends(get_current_user)
                     "alerts_generated": latest_run['alerts_generated'],
                     "error_message": latest_run['error_message']
                 }
-            }@app.get("/alerts")
+            }
+
+@app.get("/alerts")
 async def get_alerts(
     current_user=Depends(get_current_user),
     limit: int = 50,
