@@ -1,0 +1,78 @@
+# Production deployment commands
+
+.PHONY: prod-build prod-up prod-down prod-logs prod-health prod-clean
+
+# Build for production
+prod-build:
+	@echo "Building production images..."
+	docker-compose -f docker-compose.prod.yml build
+
+# Start production services
+prod-up:
+	@echo "Starting production services..."
+	docker-compose -f docker-compose.prod.yml up -d
+
+# Stop production services
+prod-down:
+	@echo "Stopping production services..."
+	docker-compose -f docker-compose.prod.yml down
+
+# View production logs
+prod-logs:
+	@echo "Viewing production logs..."
+	docker-compose -f docker-compose.prod.yml logs -f
+
+# Check production health
+prod-health:
+	@echo "Checking production service health..."
+	@echo "API Service:"
+	@curl -s http://localhost:8000/health | jq . || echo "❌ API Service not responding"
+	@echo "Frontend:"
+	@curl -s -I http://localhost:3000 | head -1 || echo "❌ Frontend not responding"
+
+# Clean production environment
+prod-clean:
+	@echo "Cleaning production environment..."
+	docker-compose -f docker-compose.prod.yml down -v
+	docker system prune -f
+
+# Generate secure keys
+generate-keys:
+	@echo "Generating secure keys for production..."
+	@echo "JWT_SECRET=$(shell openssl rand -base64 32)"
+	@echo "INTERNAL_API_KEY=$(shell openssl rand -base64 32)"
+
+# Development commands (original)
+build:
+	@echo "Building development images..."
+	docker-compose build
+
+up:
+	@echo "Starting development services..."
+	docker-compose up -d
+
+down:
+	@echo "Stopping development services..."
+	docker-compose down
+
+logs:
+	@echo "Viewing development logs..."
+	docker-compose logs -f
+
+health:
+	@echo "Checking development service health..."
+	@echo "API Service:"
+	@curl -s http://localhost:8000/health | jq . || echo "❌ API Service not responding"
+	@echo "Browser Service:"
+	@curl -s http://localhost:8001/health | jq . || echo "❌ Browser Service not responding"
+	@echo "LLM Service:"
+	@curl -s http://localhost:8002/health | jq . || echo "❌ LLM Service not responding"
+
+clean:
+	@echo "Cleaning development environment..."
+	docker-compose down -v
+	docker system prune -f
+
+init-db:
+	@echo "Initializing database..."
+	docker-compose exec postgres psql -U monitoring_user -d monitoring_db -f /docker-entrypoint-initdb.d/init.sql

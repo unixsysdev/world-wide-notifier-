@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, HTTPException
 from pydantic import BaseModel
 import requests
 import os
@@ -7,6 +7,16 @@ import re
 from bs4 import BeautifulSoup
 
 app = FastAPI(title="LLM Analysis Service")
+
+# Internal API authentication
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production")
+
+def verify_internal_api_key(request: Request):
+    """Verify internal API key for service-to-service communication"""
+    api_key = request.headers.get("X-Internal-API-Key")
+    if not api_key or api_key != INTERNAL_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid internal API key")
+    return True
 
 class AnalysisRequest(BaseModel):
     content: str
@@ -77,9 +87,12 @@ def clean_html_content(html_content):
         return html_content[:8000]
 
 @app.post("/analyze", response_model=AnalysisResponse)
-async def analyze_content(request: AnalysisRequest):
+async def analyze_content(analysis_request: AnalysisRequest, request: Request):
+    # Verify internal API key
+    verify_internal_api_key(request)
+    
     try:
-        cleaned_content = clean_html_content(request.content)
+        cleaned_content = clean_html_content(analysis_request.content)
         
         print(f"Content length after cleaning: {len(cleaned_content)}")
         
@@ -98,7 +111,7 @@ async def analyze_content(request: AnalysisRequest):
 
 Content: {cleaned_content}
 
-User's Monitoring Requirements: {request.prompt}
+User's Monitoring Requirements: {analysis_request.prompt}
 
 Instructions:
 1. Carefully evaluate if the content matches what the user is specifically looking for
@@ -123,11 +136,11 @@ Scoring Guidelines:
         }
         
         data = {
-            "model": request.model,
+            "model": analysis_request.model,
             "messages": [
                 {"role": "user", "content": prompt}
             ],
-            "max_tokens": request.max_tokens,
+            "max_tokens": analysis_request.max_tokens,
             "temperature": 0.3
         }
         

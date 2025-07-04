@@ -41,6 +41,9 @@ JWT_SECRET = os.getenv("JWT_SECRET", "your-secret-key-change-in-production")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
 
+# Internal API authentication
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production")
+
 # Security
 security = HTTPBearer(auto_error=False)
 
@@ -129,6 +132,13 @@ def verify_token(token: str):
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+def verify_internal_api_key(request: Request):
+    """Verify internal API key for service-to-service communication"""
+    api_key = request.headers.get("X-Internal-API-Key")
+    if not api_key or api_key != INTERNAL_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid internal API key")
+    return True
 
 def get_current_user(request: Request):
     """Get current authenticated user"""
@@ -421,8 +431,11 @@ async def health_check():
         return {"status": "unhealthy", "error": str(e)}
 
 @app.get("/internal/jobs/active")
-async def get_active_jobs_internal():
+async def get_active_jobs_internal(request: Request):
     """Internal endpoint for worker managers to get active jobs efficiently"""
+    # Verify internal API key
+    verify_internal_api_key(request)
+    
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cur:
@@ -453,3 +466,35 @@ async def get_active_jobs_internal():
     except Exception as e:
         logger.error(f"Error fetching active jobs: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch active jobs")
+
+@app.post("/internal/scrape")
+async def scrape_content_internal(request: Request, url: str):
+    """Internal proxy to browser service"""
+    verify_internal_api_key(request)
+    
+    try:
+        response = requests.post(
+            "http://browser_service:8001/scrape",
+            json={"url": url, "wait_time": 3},
+            headers={"X-Internal-API-Key": INTERNAL_API_KEY},
+            timeout=60
+        )
+        return response.json()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Scraping failed: {str(e)}")
+
+@app.post("/internal/analyze")
+async def analyze_content_internal(request: Request, content: str, prompt: str):
+    """Internal proxy to LLM service"""
+    verify_internal_api_key(request)
+    
+    try:
+        response = requests.post(
+            "http://llm_service:8002/analyze",
+            json={"content": content, "prompt": prompt, "max_tokens": 1000},
+            headers={"X-Internal-API-Key": INTERNAL_API_KEY},
+            timeout=30
+        )
+        return response.json()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")

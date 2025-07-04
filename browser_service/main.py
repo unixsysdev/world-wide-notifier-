@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Request, HTTPException, HTTPException
 from pydantic import BaseModel
 from playwright.async_api import async_playwright
 import asyncio
@@ -12,6 +12,16 @@ app = FastAPI(title="Browser Service", version="1.0.0")
 
 # Redis connection
 redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
+
+# Internal API authentication
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production")
+
+def verify_internal_api_key(request: Request):
+    """Verify internal API key for service-to-service communication"""
+    api_key = request.headers.get("X-Internal-API-Key")
+    if not api_key or api_key != INTERNAL_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid internal API key")
+    return True
 
 class ScrapeRequest(BaseModel):
     url: str
@@ -56,8 +66,10 @@ class FingerprintManager:
 fingerprint_manager = FingerprintManager()
 
 @app.post("/scrape", response_model=ScrapeResponse)
-async def scrape_url(request: ScrapeRequest):
+async def scrape_url(scrape_request: ScrapeRequest, http_request: Request):
     """Scrape a URL with realistic browser behavior"""
+    # Verify internal API key
+    verify_internal_api_key(http_request)
     
     fingerprint = fingerprint_manager.get_random_fingerprint()
     
@@ -93,10 +105,10 @@ async def scrape_url(request: ScrapeRequest):
             })
             
             # Navigate to target URL
-            response = await page.goto(request.url, wait_until="networkidle", timeout=30000)
+            response = await page.goto(scrape_request.url, wait_until="networkidle", timeout=30000)
             
             # Wait for dynamic content
-            await page.wait_for_timeout(request.wait_time * 1000)
+            await page.wait_for_timeout(scrape_request.wait_time * 1000)
             
             # Extract content
             content = await page.content()
@@ -109,7 +121,7 @@ async def scrape_url(request: ScrapeRequest):
             await browser.close()
             
             return ScrapeResponse(
-                url=request.url,
+                url=scrape_request.url,
                 content=content,
                 status_code=status_code,
                 headers=headers,
@@ -119,7 +131,7 @@ async def scrape_url(request: ScrapeRequest):
             
     except Exception as e:
         return ScrapeResponse(
-            url=request.url,
+            url=scrape_request.url,
             content="",
             status_code=0,
             headers={},
