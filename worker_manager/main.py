@@ -95,9 +95,34 @@ class ScalableWorkerManager:
     
     def create_job_tasks(self, job: Dict) -> List[JobTask]:
         """Break job into individual source tasks for parallel processing"""
-        job_run_id = f"run_{job['id']}_{int(time.time())}"
-        tasks = []
+        import psycopg2
+        import uuid
+        from datetime import datetime
         
+        # Create a proper job_run record in the database
+        job_run_id = str(uuid.uuid4())
+        
+        try:
+            # Connect to database to create job_run record
+            DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://monitoring_user:monitoring_pass@localhost:5432/monitoring_db")
+            conn = psycopg2.connect(DATABASE_URL)
+            conn.autocommit = True
+            
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO job_runs (id, job_id, status, started_at, sources_processed, alerts_generated)
+                    VALUES (%s, %s, 'running', NOW(), 0, 0)
+                """, (job_run_id, job['id']))
+            
+            conn.close()
+            logger.info(f"Created job_run record: {job_run_id} for job {job['id']}")
+            
+        except Exception as e:
+            logger.error(f"Failed to create job_run record: {e}")
+            # Fallback to time-based ID if database fails
+            job_run_id = f"run_{job['id']}_{int(time.time())}"
+        
+        tasks = []
         for source_url in job['sources']:
             task = JobTask(
                 job_id=job['id'],
@@ -111,6 +136,7 @@ class ScalableWorkerManager:
             tasks.append(task)
         
         return tasks
+
     
     async def should_create_alert(self, task: JobTask, analysis_result: Dict) -> bool:
         """Check if alert should be created based on cooldown and rate limiting"""

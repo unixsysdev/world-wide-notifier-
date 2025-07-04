@@ -943,7 +943,150 @@ async def duplicate_job(job_id: str, current_user=Depends(get_current_user)):
         "note": "Duplicate job is paused by default. Enable it when ready."
     }
 
-@app.get("/alerts")
+@app.post("/jobs/{job_id}/run-now")
+async def run_job_now(job_id: str, current_user=Depends(get_current_user)):
+    """Trigger immediate execution of a monitoring job"""
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            # Verify job ownership
+            cur.execute(
+                "SELECT user_id, is_active, name FROM jobs WHERE id = %s",
+                (job_id,)
+            )
+            job_data = cur.fetchone()
+            
+            if not job_data:
+                raise HTTPException(status_code=404, detail="Job not found")
+            
+            if job_data['user_id'] != current_user['id']:
+                raise HTTPException(status_code=403, detail="Access denied")
+            
+            # Create a job run record
+            run_id = str(uuid.uuid4())
+            cur.execute("""
+                INSERT INTO job_runs (id, job_id, status, started_at)
+                VALUES (%s, %s, 'running', NOW())
+            """, (run_id, job_id))
+            conn.commit()
+            
+            # Queue job for immediate processing
+            job_message = {
+                "job_id": job_id,
+                "action": "run_now",
+                "run_id": run_id,
+                "user_id": current_user['id']
+            }
+            redis_client.lpush("job_queue", json.dumps(job_message))
+    
+    return {
+        "message": f"Job '{job_data['name']}' queued for immediate execution",
+        "run_id": run_id,
+        "status": "queued"
+    }
+
+@app.get("/jobs/{job_id}/runs")
+async def get_job_runs(job_id: str, limit: int = 10, current_user=Depends(get_current_user)):
+    """Get recent runs for a specific job with analysis results"""
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            # Verify job ownership
+            cur.execute(
+                "SELECT user_id FROM jobs WHERE id = %s",
+                (job_id,)
+            )
+            job_data = cur.fetchone()
+            
+            if not job_data:
+                raise HTTPException(status_code=404, detail="Job not found")
+            
+            if job_data['user_id'] != current_user['id']:
+                raise HTTPException(status_code=403, detail="Access denied")
+            
+            # Get job runs with analysis data
+            cur.execute("""
+                SELECT 
+                    jr.id,
+                    jr.started_at,
+                    jr.completed_at,
+                    jr.status,
+                    jr.sources_processed,
+                    jr.alerts_generated,
+                    jr.error_message
+                FROM job_runs jr
+                WHERE jr.job_id = %s
+                ORDER BY jr.started_at DESC
+                LIMIT %s
+            """, (job_id, limit))
+            
+            runs = cur.fetchall()
+            
+            return [
+                {
+                    "id": run['id'],
+                    "started_at": run['started_at'].isoformat() if run['started_at'] else None,
+                    "completed_at": run['completed_at'].isoformat() if run['completed_at'] else None,
+                    "status": run['status'],
+                    "sources_processed": run['sources_processed'],
+                    "alerts_generated": run['alerts_generated'],
+                    "error_message": run['error_message']
+                } for run in runs
+            ]
+
+@app.get("/jobs/{job_id}/latest-run")
+async def get_latest_job_run(job_id: str, current_user=Depends(get_current_user)):
+    """Get the latest run for a specific job with detailed analysis"""
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            # Verify job ownership
+            cur.execute(
+                "SELECT user_id, name FROM jobs WHERE id = %s",
+                (job_id,)
+            )
+            job_data = cur.fetchone()
+            
+            if not job_data:
+                raise HTTPException(status_code=404, detail="Job not found")
+            
+            if job_data['user_id'] != current_user['id']:
+                raise HTTPException(status_code=403, detail="Access denied")
+            
+            # Get latest job run
+            cur.execute("""
+                SELECT 
+                    jr.id,
+                    jr.started_at,
+                    jr.completed_at,
+                    jr.status,
+                    jr.sources_processed,
+                    jr.alerts_generated,
+                    jr.error_message
+                FROM job_runs jr
+                WHERE jr.job_id = %s
+                ORDER BY jr.started_at DESC
+                LIMIT 1
+            """, (job_id,))
+            
+            latest_run = cur.fetchone()
+            
+            if not latest_run:
+                return {
+                    "job_name": job_data['name'],
+                    "latest_run": None,
+                    "message": "No runs found for this job"
+                }
+            
+            return {
+                "job_name": job_data['name'],
+                "latest_run": {
+                    "id": latest_run['id'],
+                    "started_at": latest_run['started_at'].isoformat() if latest_run['started_at'] else None,
+                    "completed_at": latest_run['completed_at'].isoformat() if latest_run['completed_at'] else None,
+                    "status": latest_run['status'],
+                    "sources_processed": latest_run['sources_processed'],
+                    "alerts_generated": latest_run['alerts_generated'],
+                    "error_message": latest_run['error_message']
+                }
+            }@app.get("/alerts")
 async def get_alerts(
     current_user=Depends(get_current_user),
     limit: int = 50,
