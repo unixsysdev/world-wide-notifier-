@@ -1,5 +1,3 @@
-version: '3.8'
-
 # Single secure deployment - works for both local and production
 # Just change HOSTNAME in .env file
 
