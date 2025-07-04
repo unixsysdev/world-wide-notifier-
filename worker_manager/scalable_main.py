@@ -50,7 +50,9 @@ class ScalableWorkerManager:
         """Get jobs from database via API (more reliable than Redis scan)"""
         try:
             # This would ideally connect directly to DB, but for now use internal API
-            response = requests.get(f"http://api_service:8000/internal/jobs/active", timeout=10)
+            internal_api_key = os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production")
+            headers = {"X-Internal-API-Key": internal_api_key}
+            response = requests.get(f"http://api_service:8000/internal/jobs/active", headers=headers, timeout=10)
             if response.status_code == 200:
                 return response.json()
             else:
