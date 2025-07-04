@@ -40,6 +40,12 @@ services:
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - JWT_SECRET=${JWT_SECRET:-your-secret-key-change-in-production}
       - INTERNAL_API_KEY=${INTERNAL_API_KEY:-internal-service-key-change-in-production}
+      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - STRIPE_PREMIUM_PRICE_ID=${STRIPE_PREMIUM_PRICE_ID}
+      - STRIPE_PREMIUM_PLUS_PRICE_ID=${STRIPE_PREMIUM_PLUS_PRICE_ID}
+      - HOSTNAME=${HOSTNAME:-localhost}
     depends_on:
       - postgres
       - redis
