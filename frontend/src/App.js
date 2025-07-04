@@ -1309,62 +1309,24 @@ const MainApp = () => {
                   )}
                   
                   {/* Action Buttons */}
-                  <div className="pt-4 border-t border-gray-100 space-y-3">
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => runJobNow(job.id)}
-                        className="inline-flex items-center justify-center px-3 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors text-sm font-medium"
-                      >
-                        <span className="mr-1">⚡</span> Run Now
-                      </button>
-                      <button
-                        onClick={() => pauseResumeJob(job.id, job.is_active)}
-                        className={`inline-flex items-center justify-center px-3 py-2 rounded-lg transition-colors text-sm font-medium ${
-                          job.is_active 
-                            ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' 
-                            : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                        }`}
-                      >
-                        <span className="mr-1">{job.is_active ? '⏸️' : '▶️'}</span> 
-                        {job.is_active ? 'Pause' : 'Resume'}
-                      </button>
-                      <button
-                        onClick={() => duplicateJob(job.id)}
-                        className="inline-flex items-center justify-center px-3 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors text-sm font-medium"
-                      >
-                        <span className="mr-1">📋</span> Duplicate
-                      </button>
-                      <button
-                        onClick={() => viewLastRun(job.id)}
-                        className="inline-flex items-center justify-center px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
-                      >
-                        <span className="mr-1">📈</span> Last Run
-                      </button>
-                    </div>
-                    <div className="flex justify-between space-x-2">
+                  <div className="flex justify-between items-center pt-4 border-t border-gray-100">
+                    <div className="flex space-x-2">
                       <button
                         onClick={() => {
                           setSelectedJobFilter(job.id);
                           setCurrentView('alerts');
                         }}
-                        className="flex-1 inline-flex items-center justify-center px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium"
+                        className="inline-flex items-center px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium"
                       >
                         <span className="mr-1">👁️</span> View Alerts
                       </button>
                       <button
                         onClick={() => editJob(job)}
-                        className="flex-1 inline-flex items-center justify-center px-3 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors text-sm font-medium"
+                        className="inline-flex items-center px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
                       >
                         <span className="mr-1">✏️</span> Edit
                       </button>
-                      <button
-                        onClick={() => deleteJob(job.id)}
-                        className="flex-1 inline-flex items-center justify-center px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm font-medium"
-                      >
-                        <span className="mr-1">🗑️</span> Delete
-                      </button>
                     </div>
-                  </div>
                     <button
                       onClick={() => deleteJob(job.id)}
                       className="inline-flex items-center px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm font-medium"
