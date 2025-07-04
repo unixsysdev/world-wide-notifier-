@@ -330,6 +330,61 @@ const MainApp = () => {
     setShowCreateForm(true);
   };
 
+  const pauseResumeJob = async (jobId, isActive) => {
+    try {
+      const action = isActive ? 'pause' : 'resume';
+      await axios.post(`${API_URL}/jobs/${jobId}/${action}`);
+      alert(`✅ Job ${isActive ? 'paused' : 'resumed'} successfully!`);
+      fetchJobs();
+    } catch (error) {
+      console.error(`Error ${isActive ? 'pausing' : 'resuming'} job:`, error);
+      alert(`❌ Failed to ${isActive ? 'pause' : 'resume'} job`);
+    }
+  };
+
+  const duplicateJob = async (jobId) => {
+    try {
+      const response = await axios.post(`${API_URL}/jobs/${jobId}/duplicate`);
+      alert(`✅ Job duplicated! New job ID: ${response.data.id}`);
+      fetchJobs();
+    } catch (error) {
+      console.error('Error duplicating job:', error);
+      alert('❌ Failed to duplicate job');
+    }
+  };
+
+  const runJobNow = async (jobId) => {
+    try {
+      await axios.post(`${API_URL}/jobs/${jobId}/run-now`);
+      alert('✅ Job queued for immediate execution!');
+      fetchJobs();
+    } catch (error) {
+      console.error('Error running job now:', error);
+      alert('❌ Failed to run job immediately');
+    }
+  };
+
+  const viewLastRun = async (jobId) => {
+    try {
+      const response = await axios.get(`${API_URL}/jobs/${jobId}/latest-run`);
+      const runData = response.data.latest_run;
+      if (runData) {
+        const status = runData.status || 'unknown';
+        const sourcesProcessed = runData.sources_processed || 0;
+        const alertsGenerated = runData.alerts_generated || 0;
+        const startedAt = runData.started_at ? new Date(runData.started_at).toLocaleString() : 'Unknown';
+        const errorMsg = runData.error_message ? `\nError: ${runData.error_message}` : '';
+        
+        alert(`📊 Latest Job Run:\n\nStatus: ${status}\nStarted: ${startedAt}\nSources Processed: ${sourcesProcessed}\nAlerts Generated: ${alertsGenerated}${errorMsg}`);
+      } else {
+        alert('No runs found for this job yet.');
+      }
+    } catch (error) {
+      console.error('Error fetching job run:', error);
+      alert('❌ Failed to fetch job run info');
+    }
+  };
+
   // Helper function to get alerts for a specific job
   const getJobAlerts = (jobId) => {
     return alerts.filter(alert => alert.job_id === jobId);
@@ -1254,24 +1309,62 @@ const MainApp = () => {
                   )}
                   
                   {/* Action Buttons */}
-                  <div className="flex justify-between items-center pt-4 border-t border-gray-100">
-                    <div className="flex space-x-2">
+                  <div className="pt-4 border-t border-gray-100 space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => runJobNow(job.id)}
+                        className="inline-flex items-center justify-center px-3 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors text-sm font-medium"
+                      >
+                        <span className="mr-1">⚡</span> Run Now
+                      </button>
+                      <button
+                        onClick={() => pauseResumeJob(job.id, job.is_active)}
+                        className={`inline-flex items-center justify-center px-3 py-2 rounded-lg transition-colors text-sm font-medium ${
+                          job.is_active 
+                            ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' 
+                            : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                        }`}
+                      >
+                        <span className="mr-1">{job.is_active ? '⏸️' : '▶️'}</span> 
+                        {job.is_active ? 'Pause' : 'Resume'}
+                      </button>
+                      <button
+                        onClick={() => duplicateJob(job.id)}
+                        className="inline-flex items-center justify-center px-3 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors text-sm font-medium"
+                      >
+                        <span className="mr-1">📋</span> Duplicate
+                      </button>
+                      <button
+                        onClick={() => viewLastRun(job.id)}
+                        className="inline-flex items-center justify-center px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+                      >
+                        <span className="mr-1">📈</span> Last Run
+                      </button>
+                    </div>
+                    <div className="flex justify-between space-x-2">
                       <button
                         onClick={() => {
                           setSelectedJobFilter(job.id);
                           setCurrentView('alerts');
                         }}
-                        className="inline-flex items-center px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium"
+                        className="flex-1 inline-flex items-center justify-center px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium"
                       >
                         <span className="mr-1">👁️</span> View Alerts
                       </button>
                       <button
                         onClick={() => editJob(job)}
-                        className="inline-flex items-center px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+                        className="flex-1 inline-flex items-center justify-center px-3 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors text-sm font-medium"
                       >
                         <span className="mr-1">✏️</span> Edit
                       </button>
+                      <button
+                        onClick={() => deleteJob(job.id)}
+                        className="flex-1 inline-flex items-center justify-center px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm font-medium"
+                      >
+                        <span className="mr-1">🗑️</span> Delete
+                      </button>
                     </div>
+                  </div>
                     <button
                       onClick={() => deleteJob(job.id)}
                       className="inline-flex items-center px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm font-medium"
