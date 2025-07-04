@@ -63,6 +63,28 @@ class ScalableWorkerManager:
             logger.error(f"Error fetching jobs from database: {e}")
             return []
     
+    def get_job_for_immediate_run(self, job_id: str) -> Dict or None:
+            """Get a specific job for immediate run, regardless of schedule"""
+            try:
+                internal_api_key = os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production")
+                headers = {"X-Internal-API-Key": internal_api_key}
+                response = requests.get(f"http://api_service:8000/internal/jobs/{job_id}", headers=headers, timeout=10)
+                if response.status_code == 200:
+                    job_data = response.json()
+                    # Ensure the job is active
+                    if job_data.get('is_active', False):
+                        logger.info(f"Successfully fetched job {job_id} for immediate run")
+                        return job_data
+                    else:
+                        logger.warning(f"Job {job_id} is not active, skipping immediate run")
+                        return None
+                else:
+                    logger.error(f"Failed to fetch job {job_id}: {response.status_code}")
+                    return None
+            except Exception as e:
+                logger.error(f"Error fetching job {job_id}: {e}")
+                return None
+        
 
     def should_run_job(self, job: Dict) -> bool:
         """Check if job should run based on frequency with distributed locking"""
@@ -375,79 +397,81 @@ class ScalableWorkerManager:
                 return False
 
     
-    async def process_job_batch_async(self, jobs: List[Dict]) -> None:
-            """Process a batch of jobs concurrently"""
-            if not jobs:
-                return
-                
-            # Create all tasks from all jobs and track job runs
-            all_tasks = []
-            job_run_tracking = {}  # job_run_id -> {job_id, sources_total, sources_processed, alerts_generated}
-            
-            for job in jobs:
-                if self.should_run_job(job):
-                    tasks = self.create_job_tasks(job)
-                    all_tasks.extend(tasks)
+    async def process_job_batch_async(self, jobs: List[Dict], is_immediate: bool = False) -> None:
+                """Process a batch of jobs concurrently"""
+                if not jobs:
+                    return
                     
-                    # Track job run for finalization
-                    if tasks:
-                        job_run_id = tasks[0].job_run_id
-                        job_run_tracking[job_run_id] = {
-                            "job_id": job["id"],
-                            "sources_total": len(tasks),
-                            "sources_processed": 0,
-                            "alerts_generated": 0,
-                            "analysis_results": []
-                        }
-            
-            if not all_tasks:
-                return
-            
-            logger.info(f"Processing {len(all_tasks)} tasks from {len(jobs)} jobs")
-            
-            # Process tasks in batches to avoid overwhelming services
-            async with aiohttp.ClientSession() as session:
-                semaphore = asyncio.Semaphore(self.max_concurrent_sources)
+                # Create all tasks from all jobs and track job runs
+                all_tasks = []
+                job_run_tracking = {}  # job_run_id -> {job_id, sources_total, sources_processed, alerts_generated}
                 
-                async def process_with_semaphore(task):
-                    async with semaphore:
-                        result = await self.process_task_async(session, task)
-                        # Track results for job run finalization
-                        if task.job_run_id in job_run_tracking:
-                            job_run_tracking[task.job_run_id]["sources_processed"] += 1
-                            if result and isinstance(result, dict):
-                                # Store analysis details for all results (alert generated or not)
-                                job_run_tracking[task.job_run_id]["analysis_results"].append(result)
-                                # Count alerts only if actually generated
-                                if result.get('alert_generated', False):
+                for job in jobs:
+                    # For immediate jobs, skip the frequency check
+                    if is_immediate or self.should_run_job(job):
+                        tasks = self.create_job_tasks(job)
+                        all_tasks.extend(tasks)
+                        
+                        # Track job run for finalization
+                        if tasks:
+                            job_run_id = tasks[0].job_run_id
+                            job_run_tracking[job_run_id] = {
+                                "job_id": job["id"],
+                                "sources_total": len(tasks),
+                                "sources_processed": 0,
+                                "alerts_generated": 0,
+                                "analysis_results": []
+                            }
+                
+                if not all_tasks:
+                    return
+                
+                logger.info(f"Processing {len(all_tasks)} tasks from {len(jobs)} jobs")
+                
+                # Process tasks in batches to avoid overwhelming services
+                async with aiohttp.ClientSession() as session:
+                    semaphore = asyncio.Semaphore(self.max_concurrent_sources)
+                    
+                    async def process_with_semaphore(task):
+                        async with semaphore:
+                            result = await self.process_task_async(session, task)
+                            # Track results for job run finalization
+                            if task.job_run_id in job_run_tracking:
+                                job_run_tracking[task.job_run_id]["sources_processed"] += 1
+                                if result and isinstance(result, dict):
+                                    # Store analysis details for all results (alert generated or not)
+                                    job_run_tracking[task.job_run_id]["analysis_results"].append(result)
+                                    # Count alerts only if actually generated
+                                    if result.get('alert_generated', False):
+                                        job_run_tracking[task.job_run_id]["alerts_generated"] += 1
+                                elif result is True:
+                                    # Legacy case - just count as alert generated
                                     job_run_tracking[task.job_run_id]["alerts_generated"] += 1
-                            elif result is True:
-                                # Legacy case - just count as alert generated
-                                job_run_tracking[task.job_run_id]["alerts_generated"] += 1
-                        return result
-                
-                # Process all tasks concurrently
-                results = await asyncio.gather(
-                    *[process_with_semaphore(task) for task in all_tasks],
-                    return_exceptions=True
-                )
-                
-                # Finalize all job runs with proper source counts
-                for job_run_id, tracking in job_run_tracking.items():
-                    await self.finalize_job_run(
-                        job_run_id,
-                        tracking["sources_processed"],
-                        tracking["alerts_generated"],
-                        tracking.get("analysis_results", [])
+                            return result
+                    
+                    # Process all tasks concurrently
+                    results = await asyncio.gather(
+                        *[process_with_semaphore(task) for task in all_tasks],
+                        return_exceptions=True
                     )
+                    
+                    # Finalize all job runs with proper source counts
+                    for job_run_id, tracking in job_run_tracking.items():
+                        await self.finalize_job_run(
+                            job_run_id,
+                            tracking["sources_processed"],
+                            tracking["alerts_generated"],
+                            tracking.get("analysis_results", [])
+                        )
+                    
+                    # Update job run times
+                    job_ids = set(task.job_id for task in all_tasks)
+                    for job_id in job_ids:
+                        self.redis_client.set(f"job_last_run:{job_id}", datetime.now().isoformat())
                 
-                # Update job run times
-                job_ids = set(task.job_id for task in all_tasks)
-                for job_id in job_ids:
-                    self.redis_client.set(f"job_last_run:{job_id}", datetime.now().isoformat())
-            
-            successful_tasks = sum(1 for r in results if r is True or (isinstance(r, dict) and r.get('relevance_score') is not None))
-            logger.info(f"Completed batch: {successful_tasks}/{len(all_tasks)} tasks successful")
+                successful_tasks = sum(1 for r in results if r is True or (isinstance(r, dict) and r.get('relevance_score') is not None))
+                logger.info(f"Completed batch: {successful_tasks}/{len(all_tasks)} tasks successful")
+
 
     async def finalize_job_run(self, job_run_id: str, sources_processed: int, alerts_generated: int, 
                               analysis_results: List[Dict], error_message: str = None):
@@ -526,18 +550,19 @@ class ScalableWorkerManager:
                             job_id = job_message.get("job_id")
                             if job_id:
                                 logger.info(f"Processing immediate run request for job {job_id}")
-                                # Get job from the regular database query and filter by ID
-                                all_jobs = self.get_database_jobs()
-                                for job in all_jobs:
-                                    if job['id'] == job_id:
-                                        immediate_jobs.append(job)
-                                        break
+                                # Get the specific job directly from API regardless of schedule
+                                job_data = self.get_job_for_immediate_run(job_id)
+                                if job_data:
+                                    immediate_jobs.append(job_data)
+                                else:
+                                    logger.error(f"Could not fetch job {job_id} for immediate run")
                         except Exception as e:
                             logger.error(f"Error processing queued job: {e}")
                     
                     # Process immediate jobs first
                     if immediate_jobs:
-                        await self.process_job_batch_async(immediate_jobs)
+                        logger.info(f"Processing {len(immediate_jobs)} immediate jobs")
+                        await self.process_job_batch_async(immediate_jobs, is_immediate=True)
                     
                     # Get scheduled active jobs (but skip if we just processed immediate jobs)
                     if not immediate_jobs:
@@ -555,6 +580,7 @@ class ScalableWorkerManager:
                 except Exception as e:
                     logger.error(f"Error in main processing loop: {e}")
                     await asyncio.sleep(30)
+
 
 
     
