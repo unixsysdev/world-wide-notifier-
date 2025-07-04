@@ -376,20 +376,20 @@ const MainApp = () => {
         const errorMsg = runData.error_message ? `\nError: ${runData.error_message}` : '';
         
         // Extract LLM analysis results
-        let analysisInfo = "";
+        let analysisInfo = "\\n\\n⚠️ No analysis summary available - this may be an older job run";
         if (runData.analysis_summary) {
           try {
             const analysis = typeof runData.analysis_summary === "string" 
               ? JSON.parse(runData.analysis_summary) 
               : runData.analysis_summary;
             
-            if (analysis.analysis_results && analysis.analysis_results.length > 0) {
-              analysisInfo = "\n\n🤖 COMPLETE LLM ANALYSIS:\n";
-              analysis.analysis_results.forEach((result, idx) => {
+            if (analysis.analysis_details && analysis.analysis_details.length > 0) {
+              analysisInfo = "\n\n🤖 COMPLETE LLM ANALYSIS:\n" + "=".repeat(50) + "\n";
+              analysis.analysis_details.forEach((result, idx) => {
                 analysisInfo += `\n📍 SOURCE ${idx + 1}: ${result.source_url}\n`;
-                analysisInfo += `- Score: ${result.relevance_score || "N/A"}\n`;
-                analysisInfo += `- Title: ${result.title || "N/A"}\n`;
-                analysisInfo += `- Summary: ${(result.summary || "N/A").substring(0, 200)}...\n`;
+                analysisInfo += `🎯 RELEVANCE SCORE: ${result.relevance_score || "N/A"}/${result.threshold_score || "N/A"}\n`;
+                analysisInfo += `📰 TITLE: ${result.title || "N/A"}\n`;
+                analysisInfo += `📝 SUMMARY: ${result.summary || "N/A"}\n🚨 ALERT: ${result.alert_generated ? "GENERATED" : "NOT GENERATED"}\n⏰ ANALYZED: ${new Date(result.processed_at).toLocaleString()}\n${"-".repeat(50)}\n`;
               });
             }
           } catch (e) {
@@ -397,7 +397,7 @@ const MainApp = () => {
           }
         }
         
-        alert(`📊 Latest Job Run:\n\nStatus: ${status}\nStarted: ${startedAt}\nSources Processed: ${sourcesProcessed}\nAlerts Generated: ${alertsGenerated}${errorMsg}${analysisInfo}`);      } else {
+        alert(`📊 Latest Job Run:\n\n🔍 JOB STATUS: ${status.toUpperCase()}\n📅 STARTED: ${startedAt}\n✅ COMPLETED: ${runData.completed_at ? new Date(runData.completed_at).toLocaleString() : "Still running"}\n🔗 SOURCES PROCESSED: ${sourcesProcessed}\n🚨 ALERTS GENERATED: ${alertsGenerated}${errorMsg}${analysisInfo}`);      } else {
         alert('No runs found for this job yet.');
       }
     } catch (error) {
