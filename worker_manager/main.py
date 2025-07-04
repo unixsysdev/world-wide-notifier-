@@ -354,43 +354,126 @@ class ScalableWorkerManager:
             return False
     
     async def process_job_batch_async(self, jobs: List[Dict]) -> None:
-        """Process a batch of jobs concurrently"""
-        if not jobs:
-            return
+            """Process a batch of jobs concurrently"""
+            if not jobs:
+                return
+                
+            # Create all tasks from all jobs and track job runs
+            all_tasks = []
+            job_run_tracking = {}  # job_run_id -> {job_id, sources_total, sources_processed, alerts_generated}
             
-        # Create all tasks from all jobs
-        all_tasks = []
-        for job in jobs:
-            if self.should_run_job(job):
-                tasks = self.create_job_tasks(job)
-                all_tasks.extend(tasks)
-        
-        if not all_tasks:
-            return
-        
-        logger.info(f"Processing {len(all_tasks)} tasks from {len(jobs)} jobs")
-        
-        # Process tasks in batches to avoid overwhelming services
-        async with aiohttp.ClientSession() as session:
-            semaphore = asyncio.Semaphore(self.max_concurrent_sources)
+            for job in jobs:
+                if self.should_run_job(job):
+                    tasks = self.create_job_tasks(job)
+                    all_tasks.extend(tasks)
+                    
+                    # Track job run for finalization
+                    if tasks:
+                        job_run_id = tasks[0].job_run_id
+                        job_run_tracking[job_run_id] = {
+                            "job_id": job["id"],
+                            "sources_total": len(tasks),
+                            "sources_processed": 0,
+                            "alerts_generated": 0,
+                            "analysis_results": []
+                        }
             
-            async def process_with_semaphore(task):
-                async with semaphore:
-                    return await self.process_task_async(session, task)
+            if not all_tasks:
+                return
             
-            # Process all tasks concurrently
-            results = await asyncio.gather(
-                *[process_with_semaphore(task) for task in all_tasks],
-                return_exceptions=True
-            )
+            logger.info(f"Processing {len(all_tasks)} tasks from {len(jobs)} jobs")
             
-            # Update job run times
-            job_ids = set(task.job_id for task in all_tasks)
-            for job_id in job_ids:
-                self.redis_client.set(f"job_last_run:{job_id}", datetime.now().isoformat())
-        
-        successful_tasks = sum(1 for r in results if r is True)
-        logger.info(f"Completed batch: {successful_tasks}/{len(all_tasks)} tasks successful")
+            # Process tasks in batches to avoid overwhelming services
+            async with aiohttp.ClientSession() as session:
+                semaphore = asyncio.Semaphore(self.max_concurrent_sources)
+                
+                async def process_with_semaphore(task):
+                    async with semaphore:
+                        result = await self.process_task_async(session, task)
+                        # Track results for job run finalization
+                        if task.job_run_id in job_run_tracking:
+                            job_run_tracking[task.job_run_id]["sources_processed"] += 1
+                            if result and isinstance(result, dict):
+                                job_run_tracking[task.job_run_id]["alerts_generated"] += 1
+                                # Store analysis details
+                                if "analysis_results" not in job_run_tracking[task.job_run_id]:
+                                    job_run_tracking[task.job_run_id]["analysis_results"] = []
+                                job_run_tracking[task.job_run_id]["analysis_results"].append(result)
+                            elif result is True:
+                                job_run_tracking[task.job_run_id]["alerts_generated"] += 1
+                        return result
+                
+                # Process all tasks concurrently
+                results = await asyncio.gather(
+                    *[process_with_semaphore(task) for task in all_tasks],
+                    return_exceptions=True
+                )
+                
+                # Finalize all job runs with proper source counts
+                for job_run_id, tracking in job_run_tracking.items():
+                    await self.finalize_job_run(
+                        job_run_id,
+                        tracking["sources_processed"],
+                        tracking["alerts_generated"],
+                        tracking.get("analysis_results", [])
+                    )
+                
+                # Update job run times
+                job_ids = set(task.job_id for task in all_tasks)
+                for job_id in job_ids:
+                    self.redis_client.set(f"job_last_run:{job_id}", datetime.now().isoformat())
+            
+            successful_tasks = sum(1 for r in results if r is True)
+            logger.info(f"Completed batch: {successful_tasks}/{len(all_tasks)} tasks successful")
+
+    async def finalize_job_run(self, job_run_id: str, sources_processed: int, alerts_generated: int, 
+                              analysis_results: List[Dict], error_message: str = None):
+            """Update job_run record with final results and analysis summary"""
+            import psycopg2
+            import json
+            from datetime import datetime
+            
+            try:
+                # Connect to database
+                DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://monitoring_user:monitoring_pass@localhost:5432/monitoring_db")
+                conn = psycopg2.connect(DATABASE_URL)
+                conn.autocommit = True
+                
+                # Prepare analysis summary
+                analysis_summary = {
+                    "total_sources": sources_processed,
+                    "sources_analyzed": len(analysis_results),
+                    "alerts_generated": alerts_generated,
+                    "analysis_details": analysis_results,
+                    "completed_at": datetime.now().isoformat()
+                }
+                
+                if error_message:
+                    analysis_summary["error"] = error_message
+                
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        UPDATE job_runs 
+                        SET status = %s, 
+                            completed_at = NOW(),
+                            sources_processed = %s,
+                            alerts_generated = %s,
+                            analysis_summary = %s
+                        WHERE id = %s
+                    """, (
+                        'failed' if error_message else 'completed',
+                        sources_processed,
+                        alerts_generated,
+                        json.dumps(analysis_summary),
+                        job_run_id
+                    ))
+                
+                conn.close()
+                logger.info(f"Finalized job_run {job_run_id}: {sources_processed} sources, {alerts_generated} alerts")
+                
+            except Exception as e:
+                logger.error(f"Failed to finalize job_run {job_run_id}: {e}")
+    
     
     def run_async_processor(self):
         """Run the async event loop"""
