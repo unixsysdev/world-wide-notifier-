@@ -375,8 +375,29 @@ const MainApp = () => {
         const startedAt = runData.started_at ? new Date(runData.started_at).toLocaleString() : 'Unknown';
         const errorMsg = runData.error_message ? `\nError: ${runData.error_message}` : '';
         
-        alert(`📊 Latest Job Run:\n\nStatus: ${status}\nStarted: ${startedAt}\nSources Processed: ${sourcesProcessed}\nAlerts Generated: ${alertsGenerated}${errorMsg}`);
-      } else {
+        // Extract LLM analysis results
+        let analysisInfo = "";
+        if (runData.analysis_summary) {
+          try {
+            const analysis = typeof runData.analysis_summary === "string" 
+              ? JSON.parse(runData.analysis_summary) 
+              : runData.analysis_summary;
+            
+            if (analysis.analysis_results && analysis.analysis_results.length > 0) {
+              analysisInfo = "\n\n🤖 LLM Analysis Results:\n";
+              analysis.analysis_results.forEach((result, idx) => {
+                analysisInfo += `\nSource ${idx + 1}:\n`;
+                analysisInfo += `- Score: ${result.relevance_score || "N/A"}\n`;
+                analysisInfo += `- Title: ${result.title || "N/A"}\n`;
+                analysisInfo += `- Summary: ${(result.summary || "N/A").substring(0, 200)}...\n`;
+              });
+            }
+          } catch (e) {
+            analysisInfo = `\n\n🤖 LLM Analysis: ${JSON.stringify(runData.analysis_summary).substring(0, 300)}...`;
+          }
+        }
+        
+        alert(`📊 Latest Job Run:\n\nStatus: ${status}\nStarted: ${startedAt}\nSources Processed: ${sourcesProcessed}\nAlerts Generated: ${alertsGenerated}${errorMsg}${analysisInfo}`);      } else {
         alert('No runs found for this job yet.');
       }
     } catch (error) {

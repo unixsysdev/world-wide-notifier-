@@ -911,11 +911,11 @@ async def duplicate_job(job_id: str, current_user=Depends(get_current_user)):
                 new_job_id, current_user['id'], 
                 f"Copy of {original_job['name']}", 
                 original_job['description'],
-                original_job['sources'], 
+                json.dumps(original_job["sources"]), 
                 original_job['prompt'],
                 original_job['frequency_minutes'],
                 original_job['threshold_score'],
-                original_job['notification_channel_ids'],
+                json.dumps(original_job["notification_channel_ids"]),
                 original_job['alert_cooldown_minutes'],
                 original_job['max_alerts_per_hour'],
                 False  # Start paused
@@ -929,7 +929,7 @@ async def duplicate_job(job_id: str, current_user=Depends(get_current_user)):
                                                           require_acknowledgment)
                     VALUES (%s, %s, %s, %s, %s)
                 """, (
-                    new_job_id, original_job['notification_channel_ids'],
+                    new_job_id, json.dumps(original_job["notification_channel_ids"]),
                     original_job['repeat_frequency_minutes'],
                     original_job['max_repeats'],
                     original_job['require_acknowledgment']
@@ -1011,7 +1011,8 @@ async def get_job_runs(job_id: str, limit: int = 10, current_user=Depends(get_cu
                     jr.status,
                     jr.sources_processed,
                     jr.alerts_generated,
-                    jr.error_message
+                    jr.error_message,
+                    jr.analysis_summary
                 FROM job_runs jr
                 WHERE jr.job_id = %s
                 ORDER BY jr.started_at DESC
@@ -1028,7 +1029,8 @@ async def get_job_runs(job_id: str, limit: int = 10, current_user=Depends(get_cu
                     "status": run['status'],
                     "sources_processed": run['sources_processed'],
                     "alerts_generated": run['alerts_generated'],
-                    "error_message": run['error_message']
+                    "error_message": run["error_message"],
+                    "analysis_summary": run.get("analysis_summary")
                 } for run in runs
             ]
 
@@ -1059,7 +1061,8 @@ async def get_latest_job_run(job_id: str, current_user=Depends(get_current_user)
                     jr.status,
                     jr.sources_processed,
                     jr.alerts_generated,
-                    jr.error_message
+                    jr.error_message,
+                    jr.analysis_summary
                 FROM job_runs jr
                 WHERE jr.job_id = %s
                 ORDER BY jr.started_at DESC
