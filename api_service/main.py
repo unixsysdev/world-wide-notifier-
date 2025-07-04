@@ -407,6 +407,18 @@ async def google_auth(token_request: GoogleTokenRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Authentication error: {str(e)}")
 
+@app.get("/auth/me")
+async def get_current_user_info(current_user=Depends(get_current_user)):
+    """Get current user information"""
+    return {
+        "id": current_user['id'],
+        "email": current_user['email'],
+        "name": current_user['name'],
+        "subscription": current_user.get('subscription_tier', 'free'),
+        "subscription_status": current_user.get('subscription_status', 'active'),
+        "daily_alert_count": current_user.get('daily_alert_count', 0),
+        "stripe_customer_id": current_user.get('stripe_customer_id')
+    }
 async def get_current_user_info(current_user=Depends(get_current_user)):
     """Get current authenticated user info"""
     subscription = get_user_subscription_info(current_user['id'])
