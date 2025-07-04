@@ -68,3 +68,12 @@ health:
 	@curl -s http://localhost:8000/health | jq . || echo "❌ API Service not responding"
 	@curl -s http://localhost:8001/health | jq . || echo "❌ Browser Service not responding"
 	@curl -s http://localhost:8002/health | jq . || echo "❌ LLM Service not responding"
+
+# Run E2E tests
+test:
+	docker-compose --profile test build test_service
+	docker-compose --profile test run --rm test_service
+
+# Watch test logs
+test-logs:
+	docker-compose --profile test logs -f test_service
