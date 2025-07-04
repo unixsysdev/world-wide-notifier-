@@ -279,79 +279,100 @@ class ScalableWorkerManager:
             logger.error(f"Error analyzing content: {e}")
             return None
     
-    async def process_task_async(self, session: aiohttp.ClientSession, task: JobTask) -> bool:
-        """Process a single task (job + source) asynchronously"""
-        try:
-            logger.info(f"Processing task: {task.job_name} - {task.source_url}")
-            
-            # Scrape content
-            scrape_result = await self.scrape_source_async(session, task.source_url)
-            if not scrape_result or not scrape_result.get('success'):
-                logger.warning(f"Failed to scrape {task.source_url}")
-                return False
-            
-            # Analyze content
-            analysis_result = await self.analyze_content_async(
-                session, 
-                scrape_result['content'], 
-                task.prompt
-            )
-            
-            if not analysis_result:
-                logger.warning(f"Failed to analyze content from {task.source_url}")
-                return False
-            
-            # Check if alert should be generated
-            relevance_score = analysis_result.get('relevance_score', 0)
-            
-            if relevance_score >= task.threshold_score:
-                # Check alert cooldown and rate limiting
-                if not await self.should_create_alert(task, analysis_result):
-                    logger.info(f"Alert suppressed due to cooldown/rate limiting for {task.source_url}")
+    async def process_task_async(self, session: aiohttp.ClientSession, task: JobTask) -> dict or bool:
+            """Process a single task (job + source) asynchronously"""
+            try:
+                logger.info(f"Processing task: {task.job_name} - {task.source_url}")
+                
+                # Scrape content
+                scrape_result = await self.scrape_source_async(session, task.source_url)
+                if not scrape_result or not scrape_result.get('success'):
+                    logger.warning(f"Failed to scrape {task.source_url}")
                     return False
                 
-                alert_data = {
-                    'job_id': task.job_id,
-                    'job_run_id': task.job_run_id,
+                # Analyze content
+                analysis_result = await self.analyze_content_async(
+                    session, 
+                    scrape_result['content'], 
+                    task.prompt
+                )
+                
+                if not analysis_result:
+                    logger.warning(f"Failed to analyze content from {task.source_url}")
+                    return False
+                
+                # Check if alert should be generated
+                relevance_score = analysis_result.get('relevance_score', 0)
+                
+                # Prepare detailed analysis info for tracking
+                analysis_info = {
                     'source_url': task.source_url,
                     'relevance_score': relevance_score,
-                    'title': analysis_result.get('title', 'Alert'),
-                    'content': analysis_result.get('summary', 'No summary available'),
-                    'timestamp': datetime.now().isoformat(),
-                    'user_id': task.user_id
+                    'title': analysis_result.get('title', 'No title'),
+                    'summary': analysis_result.get('summary', 'No summary available'),
+                    'threshold_score': task.threshold_score,
+                    'alert_generated': False,
+                    'processed_at': datetime.now().isoformat()
                 }
                 
-                # Queue alert for notification service
-                # Save alert to database via API
-                try:
-                    api_url = os.getenv("API_SERVICE_URL", "http://api_service:8000")
-                    headers = {
-                        "X-Internal-Key": os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production"),
-                        "Content-Type": "application/json"
+                if relevance_score >= task.threshold_score:
+                    # Check alert cooldown and rate limiting
+                    if not await self.should_create_alert(task, analysis_result):
+                        logger.info(f"Alert suppressed due to cooldown/rate limiting for {task.source_url}")
+                        analysis_info['alert_generated'] = False
+                        analysis_info['suppressed_reason'] = 'cooldown/rate limiting'
+                        return analysis_info
+                    
+                    alert_data = {
+                        'job_id': task.job_id,
+                        'job_run_id': task.job_run_id,
+                        'source_url': task.source_url,
+                        'relevance_score': relevance_score,
+                        'title': analysis_result.get('title', 'Alert'),
+                        'content': analysis_result.get('summary', 'No summary available'),
+                        'timestamp': datetime.now().isoformat(),
+                        'user_id': task.user_id
                     }
                     
-                    response = requests.post(f"{api_url}/alerts", json=alert_data, headers=headers, timeout=5)
-                    if response.status_code == 200:
-                        logger.info(f"✅ Alert saved to database")
-                        # Record alert creation for rate limiting
-                        await self.record_alert_created(task)
-                    else:
-                        logger.error(f"Failed to save alert to database: {response.status_code}")
-                except Exception as e:
-                    logger.error(f"Error saving alert to database: {e}")
-                
-                # Queue alert for notification service
-                self.redis_client.lpush("alert_queue", json.dumps(alert_data))
-                
-                logger.info(f"🚨 ALERT GENERATED! {task.source_url} (score: {relevance_score})")
-                return True
-            else:
-                logger.info(f"Score {relevance_score} below threshold {task.threshold_score}")
+                    # Queue alert for notification service
+                    # Save alert to database via API
+                    try:
+                        api_url = os.getenv("API_SERVICE_URL", "http://api_service:8000")
+                        headers = {
+                            "X-Internal-Key": os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production"),
+                            "Content-Type": "application/json"
+                        }
+                        
+                        response = requests.post(f"{api_url}/alerts", json=alert_data, headers=headers, timeout=5)
+                        if response.status_code == 200:
+                            logger.info(f"✅ Alert saved to database")
+                            # Record alert creation for rate limiting
+                            await self.record_alert_created(task)
+                            analysis_info['alert_generated'] = True
+                        else:
+                            logger.error(f"Failed to save alert to database: {response.status_code}")
+                            analysis_info['alert_generated'] = False
+                            analysis_info['error'] = f"Database save failed: {response.status_code}"
+                    except Exception as e:
+                        logger.error(f"Error saving alert to database: {e}")
+                        analysis_info['alert_generated'] = False
+                        analysis_info['error'] = f"Database save error: {e}"
+                    
+                    # Queue alert for notification service
+                    self.redis_client.lpush("alert_queue", json.dumps(alert_data))
+                    
+                    logger.info(f"🚨 ALERT GENERATED! {task.source_url} (score: {relevance_score})")
+                    return analysis_info
+                else:
+                    logger.info(f"Score {relevance_score} below threshold {task.threshold_score}")
+                    analysis_info['alert_generated'] = False
+                    analysis_info['below_threshold'] = True
+                    return analysis_info
+                    
+            except Exception as e:
+                logger.error(f"Error processing task {task.job_name} - {task.source_url}: {e}")
                 return False
-                
-        except Exception as e:
-            logger.error(f"Error processing task {task.job_name} - {task.source_url}: {e}")
-            return False
+
     
     async def process_job_batch_async(self, jobs: List[Dict]) -> None:
             """Process a batch of jobs concurrently"""
@@ -394,12 +415,13 @@ class ScalableWorkerManager:
                         if task.job_run_id in job_run_tracking:
                             job_run_tracking[task.job_run_id]["sources_processed"] += 1
                             if result and isinstance(result, dict):
-                                job_run_tracking[task.job_run_id]["alerts_generated"] += 1
-                                # Store analysis details
-                                if "analysis_results" not in job_run_tracking[task.job_run_id]:
-                                    job_run_tracking[task.job_run_id]["analysis_results"] = []
+                                # Store analysis details for all results (alert generated or not)
                                 job_run_tracking[task.job_run_id]["analysis_results"].append(result)
+                                # Count alerts only if actually generated
+                                if result.get('alert_generated', False):
+                                    job_run_tracking[task.job_run_id]["alerts_generated"] += 1
                             elif result is True:
+                                # Legacy case - just count as alert generated
                                 job_run_tracking[task.job_run_id]["alerts_generated"] += 1
                         return result
                 
@@ -423,7 +445,7 @@ class ScalableWorkerManager:
                 for job_id in job_ids:
                     self.redis_client.set(f"job_last_run:{job_id}", datetime.now().isoformat())
             
-            successful_tasks = sum(1 for r in results if r is True)
+            successful_tasks = sum(1 for r in results if r is True or (isinstance(r, dict) and r.get('relevance_score') is not None))
             logger.info(f"Completed batch: {successful_tasks}/{len(all_tasks)} tasks successful")
 
     async def finalize_job_run(self, job_run_id: str, sources_processed: int, alerts_generated: int, 
