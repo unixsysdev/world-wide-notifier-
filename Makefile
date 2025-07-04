@@ -1,5 +1,5 @@
 # Development commands
-.PHONY: build up down logs clean
+.PHONY: build up down logs clean generate-keys
 
 # Build all services
 build:
@@ -29,6 +29,12 @@ dev:
 # Initialize database
 init-db:
 	docker-compose exec postgres psql -U monitoring_user -d monitoring_db -f /docker-entrypoint-initdb.d/init.sql
+
+# Generate secure keys for production
+generate-keys:
+	@echo "# Add these to your .env file for production:"
+	@echo "JWT_SECRET=$$(openssl rand -base64 32)"
+	@echo "INTERNAL_API_KEY=$$(openssl rand -base64 32)"
 
 # Check service health
 health:
