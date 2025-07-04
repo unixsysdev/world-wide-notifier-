@@ -63,6 +63,7 @@ class ScalableWorkerManager:
             logger.error(f"Error fetching jobs from database: {e}")
             return []
     
+
     def should_run_job(self, job: Dict) -> bool:
         """Check if job should run based on frequency with distributed locking"""
         job_id = job['id']
@@ -508,26 +509,54 @@ class ScalableWorkerManager:
             loop.close()
     
     async def process_jobs_continuously(self):
-        """Main processing loop with async/await"""
-        logger.info(f"Worker {self.worker_id} started async processing")
-        
-        while self.running:
-            try:
-                # Get active jobs
-                active_jobs = self.get_database_jobs()
-                
-                if active_jobs:
-                    # Process jobs in batches
-                    for i in range(0, len(active_jobs), self.job_batch_size):
-                        batch = active_jobs[i:i + self.job_batch_size]
-                        await self.process_job_batch_async(batch)
-                
-                # Sleep between cycles
-                await asyncio.sleep(30)
-                
-            except Exception as e:
-                logger.error(f"Error in main processing loop: {e}")
-                await asyncio.sleep(30)
+            """Main processing loop with async/await"""
+            logger.info(f"Worker {self.worker_id} started async processing")
+            
+            while self.running:
+                try:
+                    # Check for immediate run requests from job_queue
+                    immediate_jobs = []
+                    while True:
+                        queued_job = self.redis_client.rpop("job_queue")
+                        if not queued_job:
+                            break
+                        
+                        try:
+                            job_message = json.loads(queued_job.decode())
+                            job_id = job_message.get("job_id")
+                            if job_id:
+                                logger.info(f"Processing immediate run request for job {job_id}")
+                                # Get job from the regular database query and filter by ID
+                                all_jobs = self.get_database_jobs()
+                                for job in all_jobs:
+                                    if job['id'] == job_id:
+                                        immediate_jobs.append(job)
+                                        break
+                        except Exception as e:
+                            logger.error(f"Error processing queued job: {e}")
+                    
+                    # Process immediate jobs first
+                    if immediate_jobs:
+                        await self.process_job_batch_async(immediate_jobs)
+                    
+                    # Get scheduled active jobs (but skip if we just processed immediate jobs)
+                    if not immediate_jobs:
+                        active_jobs = self.get_database_jobs()
+                        
+                        if active_jobs:
+                            # Process jobs in batches
+                            for i in range(0, len(active_jobs), self.job_batch_size):
+                                batch = active_jobs[i:i + self.job_batch_size]
+                                await self.process_job_batch_async(batch)
+                    
+                    # Sleep between cycles
+                    await asyncio.sleep(30)
+                    
+                except Exception as e:
+                    logger.error(f"Error in main processing loop: {e}")
+                    await asyncio.sleep(30)
+
+
     
     def run_scheduler(self):
         """Main entry point - starts async processing"""
