@@ -614,7 +614,7 @@ def get_user_alerts(user_id: str, limit: int = 50, include_acknowledged: bool = 
 @app.post("/alerts")
 async def create_alert(
     alert_data: dict,
-    internal_key: str = Header(None, alias="X-Internal-Key")
+    internal_key: str = Header(None, alias="X-Internal-API-Key")
 ):
     """Create a new alert (internal API for worker_manager)"""
     if internal_key != os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production"):
@@ -669,10 +669,9 @@ def acknowledge_alert(alert_id: str, user_id: str, token: str = None):
             # Verify alert belongs to user and get current state + job settings
             cur.execute("""
                 SELECT a.id, a.is_acknowledged, a.acknowledgment_token, a.job_id, a.source_url,
-                       j.user_id, jns.alert_cooldown_minutes
+                       j.user_id, j.alert_cooldown_minutes
                 FROM alerts a
                 JOIN jobs j ON a.job_id = j.id
-                LEFT JOIN job_notification_settings jns ON j.id = jns.job_id
                 WHERE a.id = %s
             """, (alert_id,))
             

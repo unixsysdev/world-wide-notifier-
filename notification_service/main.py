@@ -4,6 +4,7 @@ import requests
 import time
 import hashlib
 import uuid
+import json
 import threading
 from datetime import datetime, timedelta
 import os
@@ -54,36 +55,54 @@ class NotificationService:
         logger.info("✅ Repeat notification worker started")
     
     def process_repeat_notifications(self):
-        """Process alerts that need to be repeated"""
-        try:
-            # Get unacknowledged alerts that are due for repeat
-            with psycopg2.connect(self.database_url) as conn:
-                with conn.cursor() as cur:
-                    current_time = datetime.now()
+            """Process alerts that need to be repeated"""
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    # Get unacknowledged alerts that are due for repeat
+                    with psycopg2.connect(
+                        self.database_url,
+                        connect_timeout=10,
+                        cursor_factory=RealDictCursor
+                    ) as conn:
+                        with conn.cursor() as cur:
+                            current_time = datetime.now()
+                            
+                            # Find alerts that need repeating
+                            cur.execute("""
+                                SELECT a.id, a.job_id, a.source_url, a.title, a.content, a.relevance_score,
+                                       a.repeat_count, a.next_repeat_at, a.created_at,
+                                       jns.repeat_frequency_minutes, jns.max_repeats, jns.require_acknowledgment
+                                FROM alerts a
+                                JOIN jobs j ON a.job_id = j.id
+                                LEFT JOIN job_notification_settings jns ON j.id = jns.job_id
+                                WHERE a.is_acknowledged = FALSE 
+                                AND a.is_sent = TRUE
+                                AND jns.require_acknowledgment = TRUE
+                                AND (a.next_repeat_at IS NULL OR a.next_repeat_at <= %s)
+                                AND (a.repeat_count < jns.max_repeats OR jns.max_repeats = 0)
+                                AND j.is_active = TRUE
+                            """, (current_time,))
+                            
+                            alerts_to_repeat = cur.fetchall()
+                            
+                            for alert in alerts_to_repeat:
+                                self.send_repeat_notification(alert)
                     
-                    # Find alerts that need repeating
-                    cur.execute("""
-                        SELECT a.id, a.job_id, a.source_url, a.title, a.content, a.relevance_score,
-                               a.repeat_count, a.next_repeat_at, a.created_at,
-                               jns.repeat_frequency_minutes, jns.max_repeats, jns.require_acknowledgment
-                        FROM alerts a
-                        JOIN jobs j ON a.job_id = j.id
-                        LEFT JOIN job_notification_settings jns ON j.id = jns.job_id
-                        WHERE a.is_acknowledged = FALSE 
-                        AND a.is_sent = TRUE
-                        AND jns.require_acknowledgment = TRUE
-                        AND (a.next_repeat_at IS NULL OR a.next_repeat_at <= %s)
-                        AND (a.repeat_count < jns.max_repeats OR jns.max_repeats = 0)
-                        AND j.is_active = TRUE
-                    """, (current_time,))
-                    
-                    alerts_to_repeat = cur.fetchall()
-                    
-                    for alert in alerts_to_repeat:
-                        self.send_repeat_notification(alert)
-                        
-        except Exception as e:
-            logger.error(f"Error processing repeat notifications: {e}")
+                    # If we get here, the operation was successful
+                    break
+                            
+                except psycopg2.OperationalError as e:
+                    logger.error(f"Database connection error (attempt {attempt + 1}/{max_retries}): {e}")
+                    if attempt < max_retries - 1:
+                        # Wait before retry with exponential backoff
+                        time.sleep((attempt + 1) * 2)
+                    else:
+                        logger.error("Failed to connect to database after all retries")
+                except Exception as e:
+                    logger.error(f"Error processing repeat notifications: {e}")
+                    break
+
     
     def send_repeat_notification(self, alert):
         """Send repeat notification for an alert"""
@@ -489,14 +508,8 @@ class NotificationService:
         """Format alert content for notifications"""
         # Generate acknowledgment token if not present
         ack_token = alert.get('acknowledgment_token', str(uuid.uuid4()) + str(uuid.uuid4()).replace('-', ''))
-        api_url = os.getenv('API_URL', 'http://localhost:8000')
-        
-        # Only create acknowledgment URL if alert has an ID
-        alert_id = alert.get('id')
-        if alert_id:
-            ack_url = f"{api_url}/alerts/{alert_id}/acknowledge?token={ack_token}"
-        else:
-            ack_url = f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/"  # Fallback to dashboard
+        # Just use dashboard URL - no acknowledgment link in emails
+        dashboard_url = os.getenv('FRONTEND_URL', 'http://localhost:3000')
         
         text_content = f"""
 🚨 AI MONITORING ALERT - {alert['title']}
@@ -513,7 +526,7 @@ class NotificationService:
 
 ═══════════════════════════════════════════════════════════
 🚀 TAKE ACTION:
-{f"✅ Acknowledge Alert: {ack_url}" if alert_id else f"🎯 Go to Dashboard: {ack_url}"}
+🎯 Go to Dashboard: {dashboard_url}
 
 🔧 SYSTEM STATUS:
 ✅ MONITORING ACTIVE
@@ -596,14 +609,14 @@ Need help? Contact support or check your notification settings.
                 <div style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 25px; border-radius: 8px; text-align: center; margin: 30px 0;">
                     <h3 style="margin: 0 0 15px 0; font-size: 20px;">🚀 Take Action</h3>
                     <p style="margin: 0 0 20px 0; opacity: 0.9; font-size: 14px;">
-                        {f"Click the button below to acknowledge this alert and stop further notifications:" if alert_id else "Visit your dashboard to manage this alert:"}
+                        Visit your dashboard to manage all alerts and acknowledge this notification.
                     </p>
                     <div style="margin: 20px 0;">
-                        <a href="{ack_url}" 
+                        <a href="{dashboard_url}/" 
                            style="display: inline-block; background-color: white; color: #28a745; padding: 15px 30px; 
                                   text-decoration: none; border-radius: 25px; font-weight: bold; font-size: 16px;
                                   box-shadow: 0 2px 10px rgba(0,0,0,0.1); transition: all 0.3s ease;">
-                            {f"✅ Acknowledge Alert" if alert_id else "🎯 Go to Dashboard"}
+                            🎯 Go to Dashboard
                         </a>
                     </div>
                     <p style="margin: 15px 0 0 0; font-size: 12px; opacity: 0.8;">

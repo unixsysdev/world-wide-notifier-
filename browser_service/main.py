@@ -295,12 +295,18 @@ async def scrape_url(scrape_request: ScrapeRequest, http_request: Request):
     
     fingerprint = fingerprint_manager.get_random_fingerprint()
     
-    try:
-        async with async_playwright() as p:
-            # Enhanced browser launch with stealth features
-            browser = await p.chromium.launch(
-                headless=True,
-                args=[
+    # Enhanced retry logic with different strategies
+    max_retries = 3
+    
+    for main_attempt in range(max_retries):
+        browser = None
+        context = None
+        page = None
+        
+        try:
+            async with async_playwright() as p:
+                # Progressive browser launch arguments based on attempt
+                browser_args = [
                     "--no-sandbox",
                     "--disable-setuid-sandbox", 
                     "--disable-dev-shm-usage",
@@ -322,167 +328,249 @@ async def scrape_url(scrape_request: ScrapeRequest, http_request: Request):
                     "--metrics-recording-only",
                     "--use-mock-keychain",
                 ]
-            )
-            
-            # Enhanced context with realistic settings and geolocation
-            context = await browser.new_context(
-                user_agent=fingerprint["user_agent"],
-                viewport=fingerprint["viewport"],
-                locale="en-US",
-                timezone_id="America/New_York",
-                # Simulate US user to avoid EU GDPR in some cases
-                geolocation={"latitude": 40.7128, "longitude": -74.0060},  # NYC
-                permissions=["geolocation"],
-                # Add realistic browser features
-                has_touch=False,
-                is_mobile=False,
-                device_scale_factor=1,
-                screen={"width": 1920, "height": 1080},
-            )
-            
-            # Set common cookies that might help with some sites
-            common_cookies = [
-                {"name": "cookieconsent_status", "value": "allow", "domain": ".yahoo.com", "path": "/"},
-                {"name": "euconsent-v2", "value": "granted", "domain": ".yahoo.com", "path": "/"},
-                {"name": "gdpr_status", "value": "accepted", "domain": ".reuters.com", "path": "/"},
-            ]
-            
-            # Extract domain from URL for cookie setting
-            from urllib.parse import urlparse
-            domain = urlparse(scrape_request.url).netloc
-            
-            # Set cookies for the target domain
-            try:
-                domain_cookies = [
-                    {"name": "cookieconsent_status", "value": "allow", "domain": f".{domain}", "path": "/"},
-                    {"name": "consent", "value": "accepted", "domain": f".{domain}", "path": "/"},
-                    {"name": "gdpr", "value": "true", "domain": f".{domain}", "path": "/"},
-                ]
-                await context.add_cookies(domain_cookies)
-            except:
-                pass  # Some domains might reject these cookies
-            
-            page = await context.new_page()
-            
-            # Enhanced realistic headers with more variety
-            await page.set_extra_http_headers({
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Accept-Encoding": "gzip, deflate, br",
-                "Connection": "keep-alive",
-                "Upgrade-Insecure-Requests": "1",
-                "Sec-Fetch-Dest": "document",
-                "Sec-Fetch-Mode": "navigate", 
-                "Sec-Fetch-Site": "none",
-                "Sec-Fetch-User": "?1",
-                "Cache-Control": "max-age=0",
-                "DNT": "1",
-                "Sec-GPC": "1"
-            })
-            
-            # Add some realistic browser behavior
-            await page.evaluate("""
-                // Override webdriver detection
-                Object.defineProperty(navigator, 'webdriver', {
-                    get: () => undefined,
-                });
                 
-                // Override permissions query
-                const originalQuery = window.navigator.permissions.query;
-                window.navigator.permissions.query = (parameters) => (
-                    parameters.name === 'notifications' ?
-                        Promise.resolve({ state: Notification.permission }) :
-                        originalQuery(parameters)
-                );
+                # Add more aggressive memory settings on retries
+                if main_attempt > 0:
+                    browser_args.extend([
+                        "--memory-pressure-off",
+                        "--max_old_space_size=512",
+                        "--disable-background-mode",
+                        "--disable-background-networking",
+                    ])
                 
-                // Override plugin detection
-                Object.defineProperty(navigator, 'plugins', {
-                    get: () => [1, 2, 3, 4, 5],
-                });
+                # Enhanced browser launch with stealth features
+                browser = await p.chromium.launch(
+                    headless=True,
+                    args=browser_args
+                )
                 
-                // Override language detection
-                Object.defineProperty(navigator, 'languages', {
-                    get: () => ['en-US', 'en'],
-                });
-            """)
-            
-            print(f"SCRAPING: Starting to scrape {scrape_request.url}")
-            
-            # Navigate with retry logic
-            max_retries = 3
-            for attempt in range(max_retries):
+                # Enhanced context with realistic settings and geolocation
+                context = await browser.new_context(
+                    user_agent=fingerprint["user_agent"],
+                    viewport=fingerprint["viewport"],
+                    locale="en-US",
+                    timezone_id="America/New_York",
+                    # Simulate US user to avoid EU GDPR in some cases
+                    geolocation={"latitude": 40.7128, "longitude": -74.0060},  # NYC
+                    permissions=["geolocation"],
+                    # Add realistic browser features
+                    has_touch=False,
+                    is_mobile=False,
+                    device_scale_factor=1,
+                    screen={"width": 1920, "height": 1080},
+                    # Set resource load timeout
+                    bypass_csp=True,
+                )
+                
+                # Set common cookies that might help with some sites
                 try:
-                    response = await page.goto(
-                        scrape_request.url, 
-                        wait_until="networkidle", 
-                        timeout=30000
-                    )
-                    break
-                except Exception as e:
-                    if attempt == max_retries - 1:
-                        raise e
-                    print(f"SCRAPING: Retry {attempt + 1} after error: {e}")
-                    await page.wait_for_timeout(2000)
-            
-            # Wait for dynamic content with progressive loading
-            await page.wait_for_timeout(scrape_request.wait_time * 1000)
-            
-            # Enhanced consent dialog handling
-            consent_handled = await handle_consent_dialogs(page)
-            
-            if consent_handled:
-                # Wait for page to potentially reload after consent
-                await page.wait_for_timeout(3000)
-                
-                # Check if page has changed/reloaded
-                try:
-                    await page.wait_for_load_state("networkidle", timeout=10000)
+                    from urllib.parse import urlparse
+                    domain = urlparse(scrape_request.url).netloc
+                    
+                    # Set cookies for the target domain
+                    domain_cookies = [
+                        {"name": "cookieconsent_status", "value": "allow", "domain": f".{domain}", "path": "/"},
+                        {"name": "consent", "value": "accepted", "domain": f".{domain}", "path": "/"},
+                        {"name": "gdpr", "value": "true", "domain": f".{domain}", "path": "/"},
+                    ]
+                    await context.add_cookies(domain_cookies)
                 except:
-                    pass  # Continue even if networkidle times out
+                    pass  # Some domains might reject these cookies
+                
+                page = await context.new_page()
+                
+                # Set page timeout
+                page.set_default_timeout(25000)  # Reduced timeout to avoid hangs
+                
+                # Enhanced realistic headers with more variety
+                await page.set_extra_http_headers({
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Accept-Encoding": "gzip, deflate, br",
+                    "Connection": "keep-alive",
+                    "Upgrade-Insecure-Requests": "1",
+                    "Sec-Fetch-Dest": "document",
+                    "Sec-Fetch-Mode": "navigate", 
+                    "Sec-Fetch-Site": "none",
+                    "Sec-Fetch-User": "?1",
+                    "Cache-Control": "max-age=0",
+                    "DNT": "1",
+                    "Sec-GPC": "1"
+                })
+                
+                # Add some realistic browser behavior
+                await page.evaluate("""
+                    // Override webdriver detection
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined,
+                    });
+                    
+                    // Override permissions query
+                    const originalQuery = window.navigator.permissions.query;
+                    window.navigator.permissions.query = (parameters) => (
+                        parameters.name === 'notifications' ?
+                            Promise.resolve({ state: Notification.permission }) :
+                            originalQuery(parameters)
+                    );
+                    
+                    // Override plugin detection
+                    Object.defineProperty(navigator, 'plugins', {
+                        get: () => [1, 2, 3, 4, 5],
+                    });
+                    
+                    // Override language detection
+                    Object.defineProperty(navigator, 'languages', {
+                        get: () => ['en-US', 'en'],
+                    });
+                """)
+                
+                print(f"SCRAPING: Starting to scrape {scrape_request.url} (attempt {main_attempt + 1})")
+                
+                # Navigate with enhanced error handling
+                response = None
+                navigation_retries = 2
+                
+                for nav_attempt in range(navigation_retries):
+                    try:
+                        response = await page.goto(
+                            scrape_request.url, 
+                            wait_until="domcontentloaded",  # Changed from networkidle to be more reliable
+                            timeout=20000  # Reduced timeout
+                        )
+                        
+                        # Check if page crashed immediately
+                        if page.is_closed():
+                            raise Exception("Page crashed during navigation")
+                            
+                        break
+                        
+                    except Exception as e:
+                        if "Target crashed" in str(e) or "Page crashed" in str(e):
+                            print(f"SCRAPING: Page crashed during navigation, attempt {nav_attempt + 1}")
+                            if nav_attempt == navigation_retries - 1:
+                                raise Exception("Page crashed")
+                        elif "Timeout" in str(e):
+                            print(f"SCRAPING: Navigation timeout, attempt {nav_attempt + 1}")
+                            if nav_attempt == navigation_retries - 1:
+                                raise Exception("Navigation timeout")
+                        else:
+                            raise e
+                        
+                        # Wait before retry
+                        await asyncio.sleep(1)
+                        
+                        # Try to recreate page if it crashed
+                        if page.is_closed():
+                            page = await context.new_page()
+                            page.set_default_timeout(25000)
+                
+                # Wait for dynamic content with timeout protection
+                try:
+                    await page.wait_for_timeout(min(scrape_request.wait_time * 1000, 5000))
+                    
+                    # Check if page is still alive
+                    if page.is_closed():
+                        raise Exception("Page crashed during wait")
+                        
+                except:
+                    pass
+                
+                # Enhanced consent dialog handling with timeout
+                try:
+                    consent_handled = await asyncio.wait_for(
+                        handle_consent_dialogs(page), 
+                        timeout=10.0
+                    )
+                    
+                    if consent_handled:
+                        # Wait for page to potentially reload after consent
+                        await page.wait_for_timeout(2000)
+                        
+                        # Check if page has changed/reloaded
+                        try:
+                            await page.wait_for_load_state("domcontentloaded", timeout=5000)
+                        except:
+                            pass  # Continue even if load state times out
+                except asyncio.TimeoutError:
+                    print("CONSENT: Consent handling timed out, continuing...")
+                except Exception as e:
+                    print(f"CONSENT: Error handling consent: {e}")
+                
+                # Additional wait for any lazy-loaded content
+                try:
+                    await page.wait_for_timeout(1000)
+                    
+                    # Check if page is still alive before scrolling
+                    if not page.is_closed():
+                        # Try to scroll to trigger lazy loading
+                        await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
+                        await page.wait_for_timeout(500)
+                        await page.evaluate("window.scrollTo(0, 0)")
+                except:
+                    pass
+                
+                # Extract content with error handling
+                if page.is_closed():
+                    raise Exception("Page closed before content extraction")
+                    
+                content = await page.content()
+                
+                # Validate content
+                if not content or len(content) < 100:
+                    if main_attempt < max_retries - 1:
+                        print(f"SCRAPING: Content too short ({len(content)} chars), retrying...")
+                        raise Exception("Content too short")
+                
+                # Get response details
+                status_code = response.status if response else 0
+                headers = dict(response.headers) if response else {}
+                cookies = await context.cookies()
+                
+                await browser.close()
+                
+                print(f"SCRAPING: Successfully scraped {len(content)} characters from {scrape_request.url}")
+                
+                return ScrapeResponse(
+                    url=scrape_request.url,
+                    content=content,
+                    status_code=status_code,
+                    headers=headers,
+                    cookies={cookie['name']: cookie['value'] for cookie in cookies},
+                    success=True
+                )
+                
+        except Exception as e:
+            error_msg = str(e)
+            print(f"SCRAPING: Retry {main_attempt + 1} after error: {error_msg}")
             
-            # Additional wait for any lazy-loaded content
-            await page.wait_for_timeout(2000)
-            
-            # Try to scroll to trigger lazy loading
+            # Clean up resources
             try:
-                await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
-                await page.wait_for_timeout(1000)
-                await page.evaluate("window.scrollTo(0, 0)")
+                if page and not page.is_closed():
+                    await page.close()
+                if context:
+                    await context.close()
+                if browser:
+                    await browser.close()
             except:
                 pass
             
-            # Extract content
-            content = await page.content()
+            # If this is the last attempt, return error
+            if main_attempt == max_retries - 1:
+                print(f"SCRAPING: Error scraping {scrape_request.url}: {error_msg}")
+                return ScrapeResponse(
+                    url=scrape_request.url,
+                    content="",
+                    status_code=0,
+                    headers={},
+                    cookies={},
+                    success=False,
+                    error=error_msg
+                )
             
-            # Get response details
-            status_code = response.status if response else 0
-            headers = dict(response.headers) if response else {}
-            cookies = await context.cookies()
-            
-            await browser.close()
-            
-            print(f"SCRAPING: Successfully scraped {len(content)} characters from {scrape_request.url}")
-            
-            return ScrapeResponse(
-                url=scrape_request.url,
-                content=content,
-                status_code=status_code,
-                headers=headers,
-                cookies={cookie['name']: cookie['value'] for cookie in cookies},
-                success=True
-            )
-            
-    except Exception as e:
-        print(f"SCRAPING: Error scraping {scrape_request.url}: {e}")
-        return ScrapeResponse(
-            url=scrape_request.url,
-            content="",
-            status_code=0,
-            headers={},
-            cookies={},
-            success=False,
-            error=str(e)
-        )
+            # Wait before retry with exponential backoff
+            wait_time = (main_attempt + 1) * 2
+            await asyncio.sleep(wait_time)
+
 
 
 

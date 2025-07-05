@@ -57,7 +57,8 @@ services:
       - STRIPE_PREMIUM_PRICE_ID=${STRIPE_PREMIUM_PRICE_ID}
       - STRIPE_PREMIUM_PLUS_PRICE_ID=${STRIPE_PREMIUM_PLUS_PRICE_ID}
       - HOSTNAME=${HOSTNAME:-http://localhost:3000}
-      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      # Internal services use hardcoded service names
+      - FRONTEND_URL=${HOSTNAME:-http://localhost:3000}
       - DATA_STORAGE_URL=http://data_storage_service:8004
     depends_on:
       - postgres
@@ -143,7 +144,8 @@ services:
       - NOTIFICATION_EMAIL=${NOTIFICATION_EMAIL}
       - TEAMS_WEBHOOK=${TEAMS_WEBHOOK}
       - HOSTNAME=${HOSTNAME:-http://localhost:3000}
-      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      # Internal services use hardcoded service names
+      - FRONTEND_URL=${HOSTNAME:-http://localhost:3000}
       - INTERNAL_API_KEY=${INTERNAL_API_KEY:-internal-service-key-change-in-production}
     depends_on:
       - postgres

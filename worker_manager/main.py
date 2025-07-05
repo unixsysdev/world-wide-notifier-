@@ -339,7 +339,7 @@ class ScalableWorkerManager:
         try:
             api_url = os.getenv("API_SERVICE_URL", "http://api_service:8000")
             headers = {
-                "X-Internal-Key": os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production"),
+                "X-Internal-API-Key": os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production"),
                 "Content-Type": "application/json"
             }
             
@@ -416,7 +416,7 @@ class ScalableWorkerManager:
             # Get from database via API
             api_url = os.getenv("API_SERVICE_URL", "http://api_service:8000")
             headers = {
-                "X-Internal-Key": os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production"),
+                "X-Internal-API-Key": os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production"),
                 "Content-Type": "application/json"
             }
             
@@ -546,7 +546,7 @@ class ScalableWorkerManager:
                     try:
                         api_url = os.getenv("API_SERVICE_URL", "http://api_service:8000")
                         headers = {
-                            "X-Internal-Key": os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production"),
+                            "X-Internal-API-Key": os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production"),
                             "Content-Type": "application/json"
                         }
                         
