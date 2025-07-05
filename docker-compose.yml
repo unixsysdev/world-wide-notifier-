@@ -125,6 +125,7 @@ services:
       - NOTIFICATION_EMAIL=${NOTIFICATION_EMAIL}
       - TEAMS_WEBHOOK=${TEAMS_WEBHOOK}
       - HOSTNAME=${HOSTNAME:-http://localhost:3000}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
       - INTERNAL_API_KEY=${INTERNAL_API_KEY:-internal-service-key-change-in-production}
     depends_on:
       - postgres
