@@ -43,6 +43,7 @@ services:
       - STRIPE_PREMIUM_PRICE_ID=${STRIPE_PREMIUM_PRICE_ID}
       - STRIPE_PREMIUM_PLUS_PRICE_ID=${STRIPE_PREMIUM_PLUS_PRICE_ID}
       - HOSTNAME=${HOSTNAME:-http://localhost:3000}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
     depends_on:
       - postgres
       - redis
