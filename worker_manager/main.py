@@ -333,6 +333,48 @@ class ScalableWorkerManager:
             logger.error(f"Error checking alert cooldown/rate limiting: {e}")
             return True  # Default to allow on error
     
+    
+    async def get_unacknowledged_alert(self, job_id: str, source_url: str) -> Dict or None:
+        """Get existing unacknowledged alert for the same job+source"""
+        try:
+            api_url = os.getenv("API_SERVICE_URL", "http://api_service:8000")
+            headers = {
+                "X-Internal-Key": os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production"),
+                "Content-Type": "application/json"
+            }
+            
+            # Query for unacknowledged alerts for this job+source
+            params = {
+                "job_id": job_id,
+                "source_url": source_url,
+                "unacknowledged_only": "true",
+                "limit": 1
+            }
+            
+            response = requests.get(f"{api_url}/internal/alerts", params=params, headers=headers, timeout=5)
+            if response.status_code == 200:
+                alerts = response.json()
+                return alerts[0] if alerts else None
+            else:
+                logger.warning(f"Failed to get unacknowledged alerts: {response.status_code}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error checking for unacknowledged alerts: {e}")
+            return None
+    
+    async def set_acknowledgment_cooldown(self, job_id: str, source_url: str, cooldown_minutes: int):
+        """Set cooldown period after alert acknowledgment"""
+        try:
+            alert_identity = f"{job_id}:{source_url}"
+            cooldown_key = f"alert_cooldown:{alert_identity}"
+            
+            # Set cooldown period
+            self.redis_client.setex(cooldown_key, cooldown_minutes * 60, "1")
+            logger.info(f"Set {cooldown_minutes}min cooldown for {source_url}")
+            
+        except Exception as e:
+            logger.error(f"Error setting acknowledgment cooldown: {e}")    
     async def record_alert_created(self, task: JobTask) -> None:
         """Record that an alert was created for cooldown and rate limiting"""
         try:

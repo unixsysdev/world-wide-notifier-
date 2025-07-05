@@ -663,14 +663,16 @@ async def create_alert(
         print(f"Alert data: {alert_data}")
         raise HTTPException(status_code=500, detail=f"Failed to create alert: {str(e)}")
 def acknowledge_alert(alert_id: str, user_id: str, token: str = None):
-    """Acknowledge an alert"""
+    """Acknowledge an alert and set cooldown period"""
     with get_db_connection() as conn:
         with conn.cursor() as cur:
-            # Verify alert belongs to user and get current state
+            # Verify alert belongs to user and get current state + job settings
             cur.execute("""
-                SELECT a.id, a.is_acknowledged, a.acknowledgment_token, j.user_id
+                SELECT a.id, a.is_acknowledged, a.acknowledgment_token, a.job_id, a.source_url,
+                       j.user_id, jns.alert_cooldown_minutes
                 FROM alerts a
                 JOIN jobs j ON a.job_id = j.id
+                LEFT JOIN job_notification_settings jns ON j.id = jns.job_id
                 WHERE a.id = %s
             """, (alert_id,))
             
@@ -696,7 +698,22 @@ def acknowledge_alert(alert_id: str, user_id: str, token: str = None):
             """, (user_id, alert_id))
             
             conn.commit()
+            
+            # Set cooldown period in Redis to prevent new alerts for this job+source
+            try:
+                alert_identity = f"{alert['job_id']}:{alert['source_url']}"
+                cooldown_key = f"alert_cooldown:{alert_identity}"
+                cooldown_minutes = alert['alert_cooldown_minutes'] or 60
+                
+                # Set cooldown period
+                redis_client.setex(cooldown_key, cooldown_minutes * 60, "1")
+                logger.info(f"Set {cooldown_minutes}min cooldown for job {alert['job_id']}, source {alert['source_url']}")
+                
+            except Exception as e:
+                logger.warning(f"Could not set acknowledgment cooldown in Redis: {e}")
+            
             return True, "Alert acknowledged successfully"
+
 
 
 @app.get("/")

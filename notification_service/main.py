@@ -4,7 +4,7 @@ import requests
 import time
 import hashlib
 import uuid
-import json
+import threading
 from datetime import datetime, timedelta
 import os
 import logging
@@ -30,7 +30,114 @@ class NotificationService:
         
         # Deduplication settings
         self.dedup_window_hours = 6
+        
+        # Start repeat notification worker
+        self.start_repeat_notification_worker()
+
     
+    
+    def start_repeat_notification_worker(self):
+        """Start background worker to handle repeat notifications"""
+        def repeat_worker():
+            logger.info("🔄 Starting repeat notification worker...")
+            while True:
+                try:
+                    self.process_repeat_notifications()
+                    time.sleep(60)  # Check every minute
+                except Exception as e:
+                    logger.error(f"Error in repeat notification worker: {e}")
+                    time.sleep(30)  # Wait 30 seconds on error
+        
+        # Start worker thread
+        repeat_thread = threading.Thread(target=repeat_worker, daemon=True)
+        repeat_thread.start()
+        logger.info("✅ Repeat notification worker started")
+    
+    def process_repeat_notifications(self):
+        """Process alerts that need to be repeated"""
+        try:
+            # Get unacknowledged alerts that are due for repeat
+            with psycopg2.connect(self.database_url) as conn:
+                with conn.cursor() as cur:
+                    current_time = datetime.now()
+                    
+                    # Find alerts that need repeating
+                    cur.execute("""
+                        SELECT a.id, a.job_id, a.source_url, a.title, a.content, a.relevance_score,
+                               a.repeat_count, a.next_repeat_at, a.created_at,
+                               jns.repeat_frequency_minutes, jns.max_repeats, jns.require_acknowledgment
+                        FROM alerts a
+                        JOIN jobs j ON a.job_id = j.id
+                        LEFT JOIN job_notification_settings jns ON j.id = jns.job_id
+                        WHERE a.is_acknowledged = FALSE 
+                        AND a.is_sent = TRUE
+                        AND jns.require_acknowledgment = TRUE
+                        AND (a.next_repeat_at IS NULL OR a.next_repeat_at <= %s)
+                        AND (a.repeat_count < jns.max_repeats OR jns.max_repeats = 0)
+                        AND j.is_active = TRUE
+                    """, (current_time,))
+                    
+                    alerts_to_repeat = cur.fetchall()
+                    
+                    for alert in alerts_to_repeat:
+                        self.send_repeat_notification(alert)
+                        
+        except Exception as e:
+            logger.error(f"Error processing repeat notifications: {e}")
+    
+    def send_repeat_notification(self, alert):
+        """Send repeat notification for an alert"""
+        try:
+            with psycopg2.connect(self.database_url) as conn:
+                with conn.cursor() as cur:
+                    # Check rate limiting for repeats (separate from new alerts)
+                    current_hour = datetime.now().strftime('%Y-%m-%d-%H')
+                    repeat_rate_key = f"repeat_rate_limit:{alert['job_id']}:{current_hour}"
+                    repeat_count_this_hour = self.redis_client.get(repeat_rate_key)
+                    
+                    # Allow up to 10 repeats per hour (separate limit from new alerts)
+                    if repeat_count_this_hour and int(repeat_count_this_hour) >= 10:
+                        logger.info(f"Repeat rate limit exceeded for job {alert['job_id']}")
+                        return
+                    
+                    # Prepare alert data for notification
+                    alert_data = {
+                        'id': alert['id'],
+                        'job_id': alert['job_id'],
+                        'source_url': alert['source_url'],
+                        'title': f"🔄 REMINDER: {alert['title']}",
+                        'content': f"This is repeat #{alert['repeat_count'] + 1}.\n\n{alert['content']}",
+                        'relevance_score': alert['relevance_score'],
+                        'timestamp': datetime.now().isoformat(),
+                        'is_repeat': True,
+                        'original_created_at': alert['created_at'].isoformat()
+                    }
+                    
+                    # Process the repeat notification (reuse existing logic)
+                    self.process_alert(alert_data)
+                    
+                    # Update repeat tracking
+                    next_repeat_time = datetime.now() + timedelta(minutes=alert['repeat_frequency_minutes'])
+                    new_repeat_count = alert['repeat_count'] + 1
+                    
+                    cur.execute("""
+                        UPDATE alerts 
+                        SET repeat_count = %s, 
+                            next_repeat_at = %s,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = %s
+                    """, (new_repeat_count, next_repeat_time, alert['id']))
+                    
+                    conn.commit()
+                    
+                    # Update rate limiting for repeats
+                    self.redis_client.incr(repeat_rate_key)
+                    self.redis_client.expire(repeat_rate_key, 3600)  # 1 hour
+                    
+                    logger.info(f"✅ Sent repeat notification #{new_repeat_count} for alert {alert['id']}")
+                    
+        except Exception as e:
+            logger.error(f"Error sending repeat notification: {e}")    
     def get_db_connection(self):
         """Get database connection"""
         return psycopg2.connect(self.database_url, cursor_factory=RealDictCursor)
@@ -88,22 +195,28 @@ class NotificationService:
                 return result['user_id'] if result else None
                 
     def generate_alert_hash(self, alert):
-        """Generate hash for alert deduplication"""
-        content_string = f"{alert['job_id']}:{alert['title']}:{alert['source_url']}"
-        return hashlib.md5(content_string.encode()).hexdigest()
+        """Generate stable hash for alert deduplication (consistent with worker manager)"""
+        # Use same logic as worker manager: job_id + source_url (not content-dependent)
+        stable_string = f"{alert['job_id']}:{alert['source_url']}"
+        return hashlib.md5(stable_string.encode()).hexdigest()
+
     
     def is_duplicate_alert(self, alert):
-        """Check if alert is a duplicate within time window"""
-        alert_hash = self.generate_alert_hash(alert)
-        recent_key = f"recent_alert:{alert_hash}"
+        """Check if alert is a duplicate within time window (content-based, not acknowledgment-based)"""
+        # Generate stable identity hash
+        alert_identity = f"{alert['job_id']}:{alert['source_url']}"
         
-        if self.redis_client.exists(recent_key):
+        # Check content deduplication for current hour (same as worker manager)
+        current_hour = datetime.now().strftime('%Y-%m-%d-%H')
+        content_dedup_key = f"content_dedup:{alert_identity}:{current_hour}"
+        
+        if self.redis_client.exists(content_dedup_key):
             return True
         
-        # Mark as seen for configurable time period
-        cooldown_hours = int(os.getenv("ALERT_COOLDOWN_HOURS", "1"))
-        self.redis_client.setex(recent_key, cooldown_hours * 3600, "1")
+        # Mark as seen for current hour (this is handled in worker manager, but backup here)
+        self.redis_client.setex(content_dedup_key, 3600, "1")  # 1 hour
         return False
+
     
     def send_sendgrid_email(self, subject, body_text, body_html=None):
         """Send email via SendGrid"""
