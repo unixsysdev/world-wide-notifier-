@@ -219,21 +219,6 @@ const MainApp = () => {
     handleViewChange('settings');
   };
 
-  const handleCancelSubscription = async () => {
-    if (!window.confirm('Are you sure you want to cancel your subscription? It will remain active until the end of your current billing period.')) {
-      return;
-    }
-    
-    try {
-      const response = await axios.post(`${API_URL}/subscription/cancel`);
-      alert(response.data.message);
-      fetchSubscription(); // Refresh subscription data
-    } catch (error) {
-      console.error('Error cancelling subscription:', error);
-      alert('Failed to cancel subscription. Please try again.');
-    }
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     

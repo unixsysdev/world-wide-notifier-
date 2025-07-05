@@ -27,45 +27,11 @@ const Login = () => {
         }
       };
     }
-  }, [showLogin]);
+  }, [showLogin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!showLogin) {
     return <LandingPage onShowLogin={() => setShowLogin(true)} />;
   }
-
-  const handleGoogleLogin = async () => {
-    setIsLoading(true);
-    setError('');
-
-    try {
-      // Load Google Identity Services
-      if (!window.google) {
-        throw new Error('Google Identity Services not loaded');
-      }
-
-      window.google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
-        callback: async (response) => {
-          try {
-            const result = await login(response.credential);
-            if (!result.success) {
-              setError(result.error);
-            }
-          } catch (error) {
-            setError('Login failed. Please try again.');
-          } finally {
-            setIsLoading(false);
-          }
-        },
-      });
-
-      window.google.accounts.id.prompt();
-    } catch (error) {
-      console.error('Google login error:', error);
-      setError('Google login not available. Please try again.');
-      setIsLoading(false);
-    }
-  };
 
   const handleGoogleSignInClick = () => {
     if (window.google) {

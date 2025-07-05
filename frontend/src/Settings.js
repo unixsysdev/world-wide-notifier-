@@ -16,7 +16,7 @@ const Settings = ({ user, logout, userSubscription, setCurrentView, currentView,
   useEffect(() => {
     fetchChannels();
     fetchBillingHistory();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchChannels = async () => {
     try {
