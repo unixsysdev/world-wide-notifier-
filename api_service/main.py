@@ -327,7 +327,7 @@ def get_user_subscription_info(user_id: str):
     # Define tier limits based on requirements
     tier_config = {
         'free': {'alert_limit': 3, 'min_frequency_minutes': 60, 'max_jobs': 3},  # 3 alerts/day, hourly checks
-        'premium': {'alert_limit': 100, 'min_frequency_minutes': 1, 'max_jobs': 10},  # 100 alerts/day, 1min checks, 10 jobs max
+        'premium': {'alert_limit': 100, 'min_frequency_minutes': 10, 'max_jobs': 10},  # 100 alerts/day, 10min checks, 10 jobs max
         'premium_plus': {'alert_limit': 999999, 'min_frequency_minutes': 1, 'max_jobs': 999999}  # Unlimited alerts, 1min checks, unlimited jobs
     }
     
