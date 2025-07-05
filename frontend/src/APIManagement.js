@@ -577,7 +577,11 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
                   <div className="mb-2"># Create a new job</div>
                   <div className="mb-4">curl -X POST -H "Authorization: Bearer your_api_key" \</div>
                   <div className="mb-4 ml-4">-H "Content-Type: application/json" \</div>
-                  <div className="mb-4">curl -H "Authorization: Bearer YOUR_API_KEY" https://mon.duckerhub.com/api/v1/jobs</div>
+                  <div className="mb-4 ml-4">-d '{"name": "Test Job", "sources": ["https://example.com"], "prompt": "Monitor for changes", "frequency_minutes": 60, "threshold_score": 75}' \</div>
+                  <div className="mb-4">{API_URL}/v1/jobs</div>
+                  
+                  <div className="mb-2"># Get your profile with notification channels</div>
+                  <div>curl -H "Authorization: Bearer your_api_key" {API_URL}/v1/user/profile</div>
                 </div>
               </div>
             </div>
