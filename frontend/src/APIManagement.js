@@ -277,7 +277,7 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
             <div className="space-y-6">
               <div>
                 <h4 className="text-md font-semibold text-gray-900 mb-2">Base URL</h4>
-                <code className="bg-gray-100 px-3 py-2 rounded-md text-sm font-mono">{API_URL}/api/v1</code>
+                <code className="bg-gray-100 px-3 py-2 rounded-md text-sm font-mono">{API_URL}/v1</code>
               </div>
               
               <div>
@@ -521,13 +521,13 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
                 <h4 className="text-md font-semibold text-gray-900 mb-2">Example Usage</h4>
                 <div className="bg-gray-900 text-green-400 rounded-lg p-4 text-sm font-mono overflow-x-auto">
                   <div className="mb-2"># Get all jobs</div>
-                  <div className="mb-4">curl -H "Authorization: Bearer your_api_key" {API_URL}/api/v1/jobs</div>
+                  <div className="mb-4">curl -H "Authorization: Bearer your_api_key" {API_URL}/v1/jobs</div>
                   
                   <div className="mb-2"># Create a new job</div>
                   <div className="mb-4">curl -X POST -H "Authorization: Bearer your_api_key" \</div>
                   <div className="mb-4 ml-4">-H "Content-Type: application/json" \</div>
                   <div className="mb-4 ml-4">-d '{`{"name": "Oil Price Monitor", "sources": ["https://oilprice.com/rss"], "prompt": "Monitor for oil price changes", "frequency_minutes": 60, "threshold_score": 75}`}' \</div>
-                  <div>{API_URL}/api/v1/jobs</div>
+                  <div>{API_URL}/v1/jobs</div>
                 </div>
               </div>
             </div>
