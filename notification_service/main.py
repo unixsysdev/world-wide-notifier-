@@ -553,8 +553,21 @@ Need help? Contact support or check your notification settings.
                 logger.warning(f"Could not update acknowledgment token in database: {e}")
         
         # Check for duplicates
-        if self.is_duplicate_alert(alert):
-            logger.info(f"Skipping duplicate alert: {alert['title']}")
+        is_duplicate = self.is_duplicate_alert(alert)
+        if is_duplicate:
+            logger.info(f"Skipping duplicate alert: {alert['title']} - but marking as sent")
+            # Still mark duplicate alerts as sent since they were processed
+            try:
+                with psycopg2.connect(self.database_url) as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE alerts SET is_sent = TRUE WHERE id = %s",
+                            (alert['id'],)
+                        )
+                        conn.commit()
+                        logger.info(f"✅ Updated duplicate alert {alert['id']} - marked as sent in database")
+            except Exception as e:
+                logger.error(f"Failed to update is_sent flag for duplicate alert: {e}")
             return
         
         # Get user ID for this job
@@ -627,18 +640,26 @@ Need help? Contact support or check your notification settings.
         total_sent = sum(notifications_sent.values())
         
         # Update database to mark alert as sent if any notifications were sent
+        logger.info(f"Attempting to update is_sent flag - total_sent: {total_sent}, alert_id: {alert['id']}")
         if total_sent > 0:
             try:
+                logger.info(f"Connecting to database: {self.database_url}")
                 with psycopg2.connect(self.database_url) as conn:
                     with conn.cursor() as cur:
+                        logger.info(f"Executing UPDATE query for alert {alert['id']}")
                         cur.execute(
                             "UPDATE alerts SET is_sent = TRUE WHERE id = %s",
                             (alert['id'],)
                         )
+                        rows_affected = cur.rowcount
                         conn.commit()
-                        logger.info(f"✅ Updated alert {alert['id']} - marked as sent in database")
+                        logger.info(f"✅ Updated alert {alert['id']} - marked as sent in database (rows affected: {rows_affected})")
             except Exception as e:
                 logger.error(f"Failed to update is_sent flag in database: {e}")
+                logger.error(f"Database URL: {self.database_url}")
+                logger.error(f"Alert ID: {alert['id']}")
+        else:
+            logger.info(f"No notifications sent (total_sent: {total_sent}), not updating is_sent flag")
         logger.info(f"Alert processed - {total_sent} notifications sent: {notifications_sent}")
     
     def run_processor(self):
