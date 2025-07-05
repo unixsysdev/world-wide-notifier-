@@ -46,6 +46,36 @@ class NotificationService:
                     channels = cur.fetchall()
                     logger.info(f"Found {len(channels)} active notification channels for user {user_id}")
                     return channels
+    
+    def get_job_notification_channels(self, job_id):
+        """Get job's notification channel IDs"""
+        with self.get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT notification_channel_ids FROM jobs WHERE id = %s",
+                    (job_id,)
+                )
+                result = cur.fetchone()
+                if result and result['notification_channel_ids']:
+                    return result['notification_channel_ids']
+                return []
+    
+    def get_user_notification_channels_for_job(self, user_id, job_channel_ids):
+        """Get user's notification channels that are specified in job"""
+        if not job_channel_ids:
+            return []
+        
+        with self.get_db_connection() as conn:
+            with conn.cursor() as cur:
+                # Convert job_channel_ids to tuple for SQL IN clause
+                placeholders = ','.join(['%s'] * len(job_channel_ids))
+                cur.execute(
+                    f"SELECT * FROM notification_channels WHERE user_id = %s AND id = ANY(%s::uuid[]) AND is_active = true",
+                    (user_id, job_channel_ids)
+                )
+                channels = cur.fetchall()
+                logger.info(f"Found {len(channels)} notification channels for job (user {user_id})")
+                return channels
 
 
         
@@ -533,10 +563,16 @@ Need help? Contact support or check your notification settings.
             logger.error(f"No user found for job {alert['job_id']}")
             return
         
-        # Get user's notification channels
-        channels = self.get_user_notification_channels(user_id)
+        # Get job's notification channel settings
+        job_channels = self.get_job_notification_channels(alert['job_id'])
+        if not job_channels:
+            logger.info(f"No notification channels configured for job {alert['job_id']}")
+            return
+        
+        # Get user's notification channels that are specified in the job
+        channels = self.get_user_notification_channels_for_job(user_id, job_channels)
         if not channels:
-            logger.warning(f"No notification channels configured for user {user_id}")
+            logger.warning(f"No valid notification channels found for job {alert['job_id']}")
             return
         
         # Format content
