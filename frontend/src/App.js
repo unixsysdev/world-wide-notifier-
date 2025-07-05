@@ -368,6 +368,7 @@ const MainApp = () => {
     try {
       const response = await axios.get(`${API_URL}/jobs/${jobId}/latest-run`);
       const runData = response.data.latest_run;
+      if (runData) {
         const status = runData.status || 'unknown';
         const sourcesProcessed = runData.sources_processed || 0;
         const alertsGenerated = runData.alerts_generated || 0;
@@ -375,7 +376,7 @@ const MainApp = () => {
         const errorMsg = runData.error_message ? `\nError: ${runData.error_message}` : '';
         
         // Extract LLM analysis results
-        let analysisInfo = "\\n\\n⚠️ No analysis summary available - this may be an older job run";
+        let analysisInfo = "\n\n⚠️ No analysis summary available - this may be an older job run";
         if (runData.analysis_summary) {
           try {
             const analysis = typeof runData.analysis_summary === "string" 
@@ -392,11 +393,12 @@ const MainApp = () => {
               });
             }
           } catch (e) {
-            analysisInfo = `\n\n🤖 LLM Analysis: ${JSON.stringify(runData.analysis_summary).substring(0, 300)}...`;
+            analysisInfo = `\n\n🤖 RAW ANALYSIS DATA:\n${JSON.stringify(runData.analysis_summary, null, 2)}`;
           }
         }
         
-        alert(`📊 Latest Job Run:\n\n🔍 JOB STATUS: ${status.toUpperCase()}\n📅 STARTED: ${startedAt}\n✅ COMPLETED: ${runData.completed_at ? new Date(runData.completed_at).toLocaleString() : "Still running"}\n🔗 SOURCES PROCESSED: ${sourcesProcessed}\n🚨 ALERTS GENERATED: ${alertsGenerated}${errorMsg}${analysisInfo}`);      } else {
+        alert(`📊 Latest Job Run:\n\n🔍 JOB STATUS: ${status.toUpperCase()}\n📅 STARTED: ${startedAt}\n✅ COMPLETED: ${runData.completed_at ? new Date(runData.completed_at).toLocaleString() : "Still running"}\n🔗 SOURCES PROCESSED: ${sourcesProcessed}\n🚨 ALERTS GENERATED: ${alertsGenerated}${errorMsg}${analysisInfo}`);
+      } else {
         alert('No runs found for this job yet.');
       }
     } catch (error) {
@@ -404,8 +406,6 @@ const MainApp = () => {
       alert('❌ Failed to fetch job run info');
     }
   };
-
-  // Helper function to get alerts for a specific job
   const getJobAlerts = (jobId) => {
     return alerts.filter(alert => alert.job_id === jobId);
   };
