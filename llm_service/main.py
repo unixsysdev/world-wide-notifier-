@@ -158,16 +158,20 @@ Scoring Guidelines:
             print(f"LLM response: {response_text[:200]}...")
             
             # Extract JSON from response - handle markdown code blocks
-            json_block_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+            # Updated regex to handle both JSON objects and arrays
+            json_block_match = re.search(r'```(?:json)?\s*(\{.*?\}|\[.*?\])\s*```', response_text, re.DOTALL)
             if json_block_match:
                 json_text = json_block_match.group(1)
             else:
-                # Fallback to finding any JSON object
-                json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+                # Fallback to finding any JSON object or array
+                json_match = re.search(r'(\{.*\}|\[.*\])', response_text, re.DOTALL)
                 json_text = json_match.group() if json_match else None
             
             if json_text:
                 analysis_data = json.loads(json_text)
+                # Handle both single object and array responses
+                if isinstance(analysis_data, list) and len(analysis_data) > 0:
+                    analysis_data = analysis_data[0]  # Take the first item if it's an array
                 score = analysis_data.get('relevance_score', 0)
                 print(f"Analysis score: {score}")
                 
