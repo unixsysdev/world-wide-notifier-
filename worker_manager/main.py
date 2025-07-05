@@ -514,6 +514,11 @@ class ScalableWorkerManager:
                             # Record alert creation for rate limiting
                             await self.record_alert_created(task)
                             analysis_info['alert_generated'] = True
+                            
+                            # Get the alert ID from the response and add it to alert_data
+                            response_data = response.json()
+                            alert_data['id'] = response_data.get('alert_id')
+                            logger.info(f"Alert ID from database: {alert_data['id']}")
                         else:
                             logger.error(f"Failed to save alert to database: {response.status_code}")
                             analysis_info['alert_generated'] = False
@@ -523,8 +528,10 @@ class ScalableWorkerManager:
                         analysis_info['alert_generated'] = False
                         analysis_info['error'] = f"Database save error: {e}"
                     
-                    # Queue alert for notification service
-                    self.redis_client.lpush("alert_queue", json.dumps(alert_data))
+                    # Queue alert for notification service (only if successfully saved)
+                    if analysis_info.get('alert_generated'):
+                        self.redis_client.lpush("alert_queue", json.dumps(alert_data))
+                        logger.info(f"Alert queued for notification with ID: {alert_data.get('id')}")
                     
                     logger.info(f"🚨 ALERT GENERATED! {task.source_url} (score: {relevance_score})")
                     
