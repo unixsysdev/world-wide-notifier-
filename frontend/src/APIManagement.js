@@ -7,6 +7,8 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView }) => {
   const [apiKeys, setApiKeys] = useState([]);
   const [showCreateApiKey, setShowCreateApiKey] = useState(false);
   const [apiKeyForm, setApiKeyForm] = useState({ name: '', rate_limit_per_minute: '' });
+  const [createdApiKey, setCreatedApiKey] = useState(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     fetchApiKeys();
@@ -29,8 +31,8 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView }) => {
         rate_limit_per_minute: apiKeyForm.rate_limit_per_minute ? parseInt(apiKeyForm.rate_limit_per_minute) : null
       });
       
-      // Show the API key in a modal or alert (only shown once)
-      alert(`API Key Created Successfully!\n\nName: ${response.data.name}\nKey: ${response.data.key}\n\n⚠️ Save this key now - you won't be able to see it again!`);
+      // Show the API key in a proper modal with copy functionality
+      setCreatedApiKey(response.data);
       
       setApiKeyForm({ name: '', rate_limit_per_minute: '' });
       setShowCreateApiKey(false);
@@ -62,6 +64,16 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView }) => {
     } catch (error) {
       console.error('Error updating API key:', error);
       alert('Failed to update API key');
+    }
+  };
+
+  const copyToClipboard = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
     }
   };
 
@@ -414,6 +426,69 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView }) => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* API Key Success Modal */}
+      {createdApiKey && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex items-center justify-center w-12 h-12 mx-auto bg-green-100 rounded-full mb-4">
+                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 text-center mb-4">API Key Created Successfully!</h3>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                  <div className="bg-gray-100 border border-gray-300 rounded-md px-3 py-2">
+                    {createdApiKey.name}
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">API Key</label>
+                  <div className="bg-gray-100 border border-gray-300 rounded-md px-3 py-2 font-mono text-sm break-all">
+                    {createdApiKey.key}
+                  </div>
+                  <button
+                    onClick={() => copyToClipboard(createdApiKey.key)}
+                    className="mt-2 w-full bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 font-medium"
+                  >
+                    {copied ? '✅ Copied!' : '📋 Copy API Key'}
+                  </button>
+                </div>
+                
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-yellow-800">Important!</h3>
+                      <p className="text-sm text-yellow-700 mt-1">
+                        Save this API key now - you won't be able to see it again! Store it securely.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex justify-end mt-6">
+                <button
+                  onClick={() => setCreatedApiKey(null)}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+                >
+                  I've Saved It
+                </button>
+              </div>
             </div>
           </div>
         </div>
