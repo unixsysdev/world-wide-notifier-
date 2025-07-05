@@ -1,203 +1,260 @@
-# AI Monitoring System
+# World Wide Notifier
 
-A comprehensive AI-powered monitoring system that tracks multiple sources and generates intelligent alerts based on custom criteria. Now with full API key management and external API access!
+A distributed AI-powered web monitoring system that automatically tracks content changes across multiple websites and generates intelligent alerts based on custom criteria. Built with a microservices architecture for scalability and reliability.
+
+## What It Does
+
+**World Wide Notifier** monitors websites for specific content changes and uses AI to analyze the significance of those changes. When content meets your defined criteria, it automatically sends notifications through multiple channels (email, Teams, Slack).
+
+### Key Capabilities
+
+- **Intelligent Web Scraping**: Uses Playwright to render JavaScript-heavy sites with realistic browser fingerprinting
+- **AI Content Analysis**: Leverages OpenAI/Claude to understand content meaning and score relevance
+- **Multi-Channel Notifications**: Sends alerts via email, Microsoft Teams, and Slack
+- **Flexible Scheduling**: Monitor sites from every minute to daily intervals
+- **Historical Data**: Full execution history with raw content and AI analysis stored
+- **REST API**: Complete programmatic access with API key management
+- **User Authentication**: Google OAuth with tier-based access control
 
 ## Architecture
 
-- **Frontend**: React app with Tailwind CSS and Google OAuth
-- **API Service**: FastAPI backend with JWT authentication
-- **Browser Service**: Playwright-based realistic web scraping
-- **Worker Manager**: Job scheduling and processing
-- **LLM Service**: OpenAI/Claude integration for content analysis
-- **Notification Service**: User-specific multi-channel alerting
-- **Database**: PostgreSQL for persistence
-- **Queue**: Redis for job management
+### Microservices Design
+```
+Frontend (React) → API Service (FastAPI) → Job Queue (Redis)
+                                        ↓
+Worker Manager → Browser Service (Playwright)
+              → LLM Service (OpenAI/Claude)
+              → Notification Service (Email/Teams/Slack)
+              → Data Storage (PostgreSQL + MongoDB)
+```
+
+### Service Breakdown
+
+| Service | Technology | Purpose |
+|---------|------------|---------|
+| **Frontend** | React + Tailwind | Web interface for job management |
+| **API Service** | FastAPI + JWT | Authentication, job CRUD, API endpoints |
+| **Browser Service** | Playwright | Web scraping with JS rendering |
+| **Worker Manager** | Python + Redis | Job scheduling and execution |
+| **LLM Service** | OpenAI/Claude | Content analysis and scoring |
+| **Notification Service** | SMTP/Webhooks | Multi-channel alerting |
+| **PostgreSQL** | - | Job metadata and user data |
+| **MongoDB** | - | Raw content and historical data |
+| **Redis** | - | Job queue and rate limiting |
 
 ## Quick Start
 
-1. **Setup Environment**:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your API keys and configuration
-   # Required: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, OPENAI_API_KEY, SENDGRID_API_KEY
-   ```
-
-2. **Build and Start**:
-   ```bash
-   make build
-   make up
-   ```
-
-3. **Initialize Database**:
-   ```bash
-   make init-db
-   ```
-
-4. **Access the Application**:
-   - Frontend: http://localhost:3000
-   - API: http://localhost:8000
-   - API Docs: http://localhost:8000/docs
-
-## Services
-
-### Frontend (Port 3000)
-- React-based web interface
-- Job creation and management
-- Real-time monitoring dashboard
-
-### API Service (Port 8000)
-- FastAPI backend
-- Google OAuth authentication
-- Job CRUD operations
-- RESTful API endpoints
-
-### Browser Service (Port 8001)
-- Playwright-powered web scraping
-- Realistic browser fingerprinting
-- JavaScript rendering support
-- Anti-detection measures
-
-### Worker Manager
-- Job scheduling and execution
-- Source processing coordination
-- Scalable worker pool management
-
-### LLM Service (Port 8002)
-- OpenAI GPT integration
-- Content analysis and scoring
-- Structured response parsing
-- Configurable prompts
-
-### Notification Service (Port 8003)
-- Multi-channel alerting
-- Email and Teams notifications
-- Duplicate detection
-- Customizable thresholds
-
-## Development
-
+### 1. Environment Setup
 ```bash
-# Start in development mode
-make dev
+# Clone and setup environment
+git clone <repository>
+cd world-wide-notifier
+cp .env.example .env
+```
 
-# View logs
-make logs
+### 2. Configure Environment Variables
+```bash
+# Required API keys and configuration
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+OPENAI_API_KEY=your_openai_api_key
+SENDGRID_API_KEY=your_sendgrid_api_key
+JWT_SECRET=your_jwt_secret
+HOSTNAME=localhost  # or your domain
+```
 
-# Clean up
-make clean
+### 3. Build and Deploy
+```bash
+# Build all services
+make build
+
+# Start all services
+make up
+
+# Initialize database
+make init-db
 
 # Check service health
 make health
 ```
 
-## Authentication
+### 4. Access the Application
+- **Web Interface**: http://localhost:3000
+- **API Documentation**: http://localhost:8000/docs
+- **API Endpoint**: http://localhost:8000/api/v1/
 
-The system uses Google OAuth for user authentication:
-- Users sign in with their Google account
-- JWT tokens are used for API authentication
-- Each user has their own jobs and notification channels
+## API Usage
 
-## Notification Channels
-
-Users can configure multiple notification channels:
-- **Email**: Send alerts to specific email addresses
-- **Microsoft Teams**: Send alerts to Teams channels via webhooks
-- **Slack**: Send alerts to Slack channels via webhooks
-
-## Configuration
-
-See `.env` for required environment variables:
-- Google OAuth credentials (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET)
-- OpenAI/Anthropic API keys
-- SMTP configuration (SENDGRID_API_KEY)
-- JWT secret for authentication
-- Hostname configuration for flexible deployment
-
-## Latest Features (✨ New!)
-
-### 🔑 **API Key Management**
-- Complete API key management interface in the web UI
-- Secure SHA-256 hashed key storage
-- Tier-based rate limiting (60/120/300 requests per minute)
-- Real-time usage statistics and monitoring
-
-### 🌐 **External API Endpoints (v1)**
-Full REST API for programmatic access:
-- `GET /api/v1/jobs` - List all user jobs
-- `POST /api/v1/jobs` - Create new monitoring job
-- `PUT /api/v1/jobs/{id}` - Update existing job
-- `DELETE /api/v1/jobs/{id}` - Delete job
-- `POST /api/v1/jobs/{id}/run` - Trigger immediate execution
-- `GET /api/v1/jobs/{id}/runs` - Get job execution history
-- `GET /api/v1/jobs/{id}/alerts` - Get job-specific alerts
-- `GET /api/v1/alerts` - Get all user alerts
-
-### 📊 **Historical Data & Analytics**
-Complete historical data storage and retrieval:
-- `GET /api/v1/jobs/{id}/historical-data` - Get detailed execution history with raw data
-- `GET /api/v1/jobs/{id}/runs/{run_id}/detailed` - Get complete run details including source HTML and LLM analysis
-- `GET /jobs/{id}/historical-data` - Web interface for historical data
-- `GET /jobs/{id}/runs/{run_id}/detailed` - Web interface for detailed run analysis
-- **MongoDB Integration**: Raw HTML, LLM analysis, and execution metadata stored in MongoDB
-- **PostgreSQL Integration**: Job metadata and summary data in PostgreSQL
-
-### 🔐 **Security & Authentication**
-- Bearer token authentication for all API endpoints
-- Rate limiting with Redis backend
-- User isolation and tier-based restrictions
-- Secure key generation with cryptographic randomness
-
-### 💳 **Subscription Tiers**
-- **Free**: 3 jobs, hourly frequency, 3 alerts/day, 2 API keys
-- **Premium**: 10 jobs, 1-min frequency, 100 alerts/day, 5 API keys
-- **Premium Plus**: Unlimited jobs, 1-min frequency, unlimited alerts, 10 API keys
-
-### 🎯 **UI/UX Improvements**
-- Fixed navigation with proper URL routing
-- Browser back/forward button support
-- Persistent tab state across page refreshes
-- Improved API key creation with secure modal display
-- Real-time navigation between all views
-
-## API Usage Example
+### Authentication
+Create an API key in the web interface, then use it for all API calls:
 
 ```bash
-# Create API key in web UI first, then:
 export API_KEY="ak_live_your_generated_key"
+```
 
-# List jobs
-curl -H "Authorization: Bearer $API_KEY" http://localhost:8000/api/v1/jobs
+### Example API Calls
 
-# Create job
+```bash
+# List all monitoring jobs
+curl -H "Authorization: Bearer $API_KEY" \
+  http://localhost:8000/api/v1/jobs
+
+# Create a new monitoring job
 curl -X POST \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Monitor News",
-    "sources": ["https://example.com/news"],
-    "prompt": "Monitor for market-moving news",
+    "name": "Monitor Product Launch",
+    "sources": ["https://company.com/news"],
+    "prompt": "Alert when new product launches are announced",
     "frequency_minutes": 60,
-    "threshold_score": 75
+    "threshold_score": 80
   }' \
   http://localhost:8000/api/v1/jobs
 
-# Trigger immediate job run
+# Trigger immediate job execution
 curl -X POST \
   -H "Authorization: Bearer $API_KEY" \
   http://localhost:8000/api/v1/jobs/{job_id}/run
+
+# Get job execution history
+curl -H "Authorization: Bearer $API_KEY" \
+  http://localhost:8000/api/v1/jobs/{job_id}/runs
+
+# Get all alerts
+curl -H "Authorization: Bearer $API_KEY" \
+  http://localhost:8000/api/v1/alerts
 ```
 
-## Recent Bug Fixes
+## Key Features
 
-✅ **Fixed API Key Creation**: Resolved Pydantic validation error in API key endpoint
-✅ **Fixed Navigation**: All tabs now maintain proper navigation state
-✅ **Fixed URL Routing**: Browser back/forward buttons now work correctly
-✅ **Fixed Duplicate Elements**: Removed duplicate API navigation buttons
-✅ **Fixed Settings View**: Settings now maintains navigation tabs instead of separate view
+### 🤖 **AI-Powered Analysis**
+- Content analysis using OpenAI GPT or Claude
+- Customizable prompts for specific monitoring needs
+- Scoring system (0-100) for content relevance
+- Automatic duplicate detection
 
-## Development Status
+### 🌐 **Advanced Web Scraping**
+- JavaScript rendering with Playwright
+- Realistic browser fingerprinting
+- Anti-detection measures
+- Support for dynamic content
 
-🚀 **Production Ready**: Core monitoring system with full API access
-🔧 **Active Development**: Continuous improvements and feature additions
-📊 **Real-time Monitoring**: Live dashboard with comprehensive job management
-🛡️ **Secure**: Enterprise-grade security with proper authentication and rate limiting
+### 📊 **Historical Data**
+- Complete execution history
+- Raw HTML content storage
+- LLM analysis results
+- Performance metrics
+
+### 🔐 **Security & Access Control**
+- Google OAuth authentication
+- API key management with rate limiting
+- Tier-based access control
+- User data isolation
+
+### 🚨 **Multi-Channel Notifications**
+- Email notifications via SendGrid
+- Microsoft Teams webhooks
+- Slack integration
+- Customizable notification thresholds
+
+## Subscription Tiers
+
+| Feature | Free | Premium | Premium Plus |
+|---------|------|---------|--------------|
+| **Jobs** | 3 | 10 | Unlimited |
+| **Frequency** | Hourly | 1 minute | 1 minute |
+| **Alerts/Day** | 3 | 100 | Unlimited |
+| **API Keys** | 2 | 5 | 10 |
+| **Rate Limit** | 60/min | 120/min | 300/min |
+
+## Development
+
+### Development Mode
+```bash
+# Start in development mode with hot reload
+make dev
+
+# View logs from all services
+make logs
+
+# Clean up containers and volumes
+make clean
+
+# Check individual service health
+curl http://localhost:8000/health
+curl http://localhost:8001/health
+curl http://localhost:8002/health
+```
+
+### Service Ports
+- **Frontend**: 3000
+- **API Service**: 8000
+- **Browser Service**: 8001
+- **LLM Service**: 8002
+- **Notification Service**: 8003
+- **PostgreSQL**: 5432
+- **MongoDB**: 27017
+- **Redis**: 6379
+
+### Adding New Features
+1. **Backend Changes**: Modify relevant service in its directory
+2. **Frontend Changes**: Update React components in `frontend/src/`
+3. **Database Changes**: Add migrations to `init.sql`
+4. **API Changes**: Update OpenAPI documentation in FastAPI services
+
+## Use Cases
+
+### 1. **E-commerce Monitoring**
+Monitor competitor pricing, product availability, or new product launches.
+
+### 2. **News & Media Tracking**
+Track specific topics, companies, or events across news websites.
+
+### 3. **Regulatory Compliance**
+Monitor government websites for regulatory changes affecting your industry.
+
+### 4. **Social Media Monitoring**
+Track brand mentions, sentiment, or trending topics (where APIs are available).
+
+### 5. **Technical Documentation**
+Monitor API documentation, changelogs, or technical specifications.
+
+## Technical Details
+
+### Data Flow
+1. **Job Creation**: Users create monitoring jobs via web interface or API
+2. **Scheduling**: Jobs are queued in Redis based on frequency settings
+3. **Execution**: Worker Manager fetches jobs and coordinates execution
+4. **Scraping**: Browser Service fetches and renders web content
+5. **Analysis**: LLM Service analyzes content against custom prompts
+6. **Storage**: Results stored in PostgreSQL (metadata) and MongoDB (raw data)
+7. **Alerting**: Notification Service sends alerts when thresholds are met
+
+### Scalability
+- **Horizontal Scaling**: Each service can be scaled independently
+- **Load Balancing**: API gateway pattern with FastAPI
+- **Queue Management**: Redis-based job queue with worker pools
+- **Database Sharding**: MongoDB for large historical data storage
+
+### Monitoring & Observability
+- **Health Checks**: Each service exposes health endpoints
+- **Logging**: Structured logging across all services
+- **Metrics**: Built-in performance monitoring
+- **Error Handling**: Comprehensive error tracking and recovery
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new functionality
+5. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License. See LICENSE file for details.
+
+## Support
+
+For issues, feature requests, or questions, please create an issue in the GitHub repository.
