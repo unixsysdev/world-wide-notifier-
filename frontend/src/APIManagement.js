@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -502,6 +503,57 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
                       </pre>
                     </details>
                   </div>
+                  
+                  <div className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-mono">GET</span>
+                      <code className="text-sm font-mono">/user/profile</code>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-3">Get your user profile including notification channels</p>
+                    <details className="mt-2">
+                      <summary className="text-xs text-blue-600 cursor-pointer hover:text-blue-800">Sample Response</summary>
+                      <pre className="text-xs bg-gray-50 p-2 rounded mt-2 overflow-x-auto">
+{`{
+  "user": {
+    "id": "user_123",
+    "email": "user@example.com",
+    "name": "John Doe",
+    "subscription_tier": "premium",
+    "subscription_status": "active",
+    "created_at": "2024-01-01T10:00:00Z"
+  },
+  "notification_channels": [
+    {
+      "id": "channel_123",
+      "channel_type": "email",
+      "config": {
+        "email": "user@example.com",
+        "name": "Primary Email"
+      },
+      "created_at": "2024-01-01T10:00:00Z"
+    },
+    {
+      "id": "channel_456",
+      "channel_type": "email",
+      "config": {
+        "email": "user2@example.com",
+        "name": "Secondary Email"
+      },
+      "created_at": "2024-01-01T10:00:00Z"
+    }
+  ],
+  "subscription": {
+    "tier": "premium",
+    "status": "active",
+    "daily_alert_count": 5,
+    "alert_limit": 100,
+    "min_frequency_minutes": 1,
+    "max_jobs": 10
+  }
+}`}
+                      </pre>
+                    </details>
+                  </div>
                 </div>
               </div>
               
@@ -526,8 +578,11 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
                   <div className="mb-2"># Create a new job</div>
                   <div className="mb-4">curl -X POST -H "Authorization: Bearer your_api_key" \</div>
                   <div className="mb-4 ml-4">-H "Content-Type: application/json" \</div>
-                  <div className="mb-4 ml-4">-d '{`{"name": "Oil Price Monitor", "sources": ["https://oilprice.com/rss"], "prompt": "Monitor for oil price changes", "frequency_minutes": 60, "threshold_score": 75}`}' \</div>
-                  <div>{API_URL}/v1/jobs</div>
+                  <div className="mb-4 ml-4">-d '{\`\{"name": "Oil Price Monitor", "sources": \["https://oilprice\.com/rss"\], "prompt": "Monitor for oil price changes", "frequency_minutes": 60, "threshold_score": 75\}\`}' \</div>
+                  <div className="mb-4">\{API_URL\}/v1/jobs</div>
+                  
+                  <div className="mb-2"># Get your profile with notification channels</div>
+                  <div>curl -H "Authorization: Bearer your_api_key" \{API_URL\}/v1/user/profile</div>
                 </div>
               </div>
             </div>

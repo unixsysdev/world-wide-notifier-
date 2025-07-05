@@ -2175,6 +2175,43 @@ async def get_jobs_api(
     return jobs
 
 
+@app.get("/api/v1/user/profile")
+async def get_user_profile_api(request: Request):
+    """Get user profile including notification channels via API key authentication"""
+    user_data = get_current_api_user(request)
+    
+    # Get user details
+    user = get_user_by_id(user_data['user_id'])
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get notification channels
+    notification_channels = get_user_notification_channels(user_data['user_id'])
+    
+    # Get subscription info
+    subscription = get_user_subscription_info(user_data['user_id'])
+    
+    return {
+        "user": {
+            "id": user['id'],
+            "email": user['email'],
+            "name": user['name'],
+            "subscription_tier": user.get('subscription_tier', 'free'),
+            "subscription_status": user.get('subscription_status', 'active'),
+            "created_at": user['created_at'].isoformat()
+        },
+        "notification_channels": [
+            {
+                "id": channel['id'],
+                "channel_type": channel['channel_type'],
+                "config": channel['config'] if isinstance(channel['config'], dict) else json.loads(channel['config']) if channel['config'] else {},
+                "created_at": channel['created_at'].isoformat()
+            }
+            for channel in notification_channels
+        ],
+        "subscription": subscription
+    }
+
 @app.post("/api/v1/jobs", response_model=JobResponse)
 async def create_job_api(
     request: Request,
