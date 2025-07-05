@@ -21,7 +21,7 @@ const MainApp = () => {
     const path = window.location.pathname;
     if (path.includes('/alerts')) return 'alerts';
     if (path.includes('/settings')) return 'settings';
-    if (path.includes('/api-management')) return 'api';
+    if (path.includes('/programmer')) return 'api';
     return 'dashboard';
   });
   const [dataLoading, setDataLoading] = useState(true);
@@ -50,7 +50,7 @@ const MainApp = () => {
   const handleViewChange = (view) => {
     setCurrentView(view);
     const newPath = view === 'dashboard' ? '/' : 
-                   view === 'api' ? '/api-management' : `/${view}`;
+                   view === 'api' ? '/programmer' : `/${view}`;
     window.history.pushState(null, '', newPath);
   };
 
@@ -60,7 +60,7 @@ const MainApp = () => {
       const path = window.location.pathname;
       if (path.includes('/alerts')) handleViewChange('alerts');
       else if (path.includes('/settings')) handleViewChange('settings');
-      else if (path.includes('/api-management')) handleViewChange('api');
+      else if (path.includes('/programmer')) handleViewChange('api');
       else setCurrentView('dashboard');
     };
 
