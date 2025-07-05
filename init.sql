@@ -48,7 +48,8 @@ CREATE TABLE job_runs (
     status VARCHAR(50) DEFAULT 'running', -- running, completed, failed
     sources_processed INTEGER DEFAULT 0,
     alerts_generated INTEGER DEFAULT 0,
-    error_message TEXT
+    error_message TEXT,
+    analysis_summary JSONB -- AI analysis results and details
 );
 
 -- Alerts table
