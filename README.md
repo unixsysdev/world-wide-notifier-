@@ -1,6 +1,6 @@
 # AI Monitoring System
 
-A comprehensive AI-powered monitoring system that tracks multiple sources and generates intelligent alerts based on custom criteria.
+A comprehensive AI-powered monitoring system that tracks multiple sources and generates intelligent alerts based on custom criteria. Now with full API key management and external API access!
 
 ## Architecture
 
@@ -113,12 +113,91 @@ See `.env` for required environment variables:
 - JWT secret for authentication
 - Hostname configuration for flexible deployment
 
-## Next Steps
+## Latest Features (✨ New!)
 
-1. Add Google OAuth integration
-2. Implement user management
-3. Add more notification channels
-4. Enhance source validation
-5. Add monitoring dashboard
-6. Implement rate limiting
-7. Add source health monitoring
+### 🔑 **API Key Management**
+- Complete API key management interface in the web UI
+- Secure SHA-256 hashed key storage
+- Tier-based rate limiting (60/120/300 requests per minute)
+- Real-time usage statistics and monitoring
+
+### 🌐 **External API Endpoints (v1)**
+Full REST API for programmatic access:
+- `GET /api/v1/jobs` - List all user jobs
+- `POST /api/v1/jobs` - Create new monitoring job
+- `PUT /api/v1/jobs/{id}` - Update existing job
+- `DELETE /api/v1/jobs/{id}` - Delete job
+- `POST /api/v1/jobs/{id}/run` - Trigger immediate execution
+- `GET /api/v1/jobs/{id}/runs` - Get job execution history
+- `GET /api/v1/jobs/{id}/alerts` - Get job-specific alerts
+- `GET /api/v1/alerts` - Get all user alerts
+
+### 📊 **Historical Data & Analytics**
+Complete historical data storage and retrieval:
+- `GET /api/v1/jobs/{id}/historical-data` - Get detailed execution history with raw data
+- `GET /api/v1/jobs/{id}/runs/{run_id}/detailed` - Get complete run details including source HTML and LLM analysis
+- `GET /jobs/{id}/historical-data` - Web interface for historical data
+- `GET /jobs/{id}/runs/{run_id}/detailed` - Web interface for detailed run analysis
+- **MongoDB Integration**: Raw HTML, LLM analysis, and execution metadata stored in MongoDB
+- **PostgreSQL Integration**: Job metadata and summary data in PostgreSQL
+
+### 🔐 **Security & Authentication**
+- Bearer token authentication for all API endpoints
+- Rate limiting with Redis backend
+- User isolation and tier-based restrictions
+- Secure key generation with cryptographic randomness
+
+### 💳 **Subscription Tiers**
+- **Free**: 3 jobs, hourly frequency, 3 alerts/day, 2 API keys
+- **Premium**: 10 jobs, 1-min frequency, 100 alerts/day, 5 API keys
+- **Premium Plus**: Unlimited jobs, 1-min frequency, unlimited alerts, 10 API keys
+
+### 🎯 **UI/UX Improvements**
+- Fixed navigation with proper URL routing
+- Browser back/forward button support
+- Persistent tab state across page refreshes
+- Improved API key creation with secure modal display
+- Real-time navigation between all views
+
+## API Usage Example
+
+```bash
+# Create API key in web UI first, then:
+export API_KEY="ak_live_your_generated_key"
+
+# List jobs
+curl -H "Authorization: Bearer $API_KEY" http://localhost:8000/api/v1/jobs
+
+# Create job
+curl -X POST \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Monitor News",
+    "sources": ["https://example.com/news"],
+    "prompt": "Monitor for market-moving news",
+    "frequency_minutes": 60,
+    "threshold_score": 75
+  }' \
+  http://localhost:8000/api/v1/jobs
+
+# Trigger immediate job run
+curl -X POST \
+  -H "Authorization: Bearer $API_KEY" \
+  http://localhost:8000/api/v1/jobs/{job_id}/run
+```
+
+## Recent Bug Fixes
+
+✅ **Fixed API Key Creation**: Resolved Pydantic validation error in API key endpoint
+✅ **Fixed Navigation**: All tabs now maintain proper navigation state
+✅ **Fixed URL Routing**: Browser back/forward buttons now work correctly
+✅ **Fixed Duplicate Elements**: Removed duplicate API navigation buttons
+✅ **Fixed Settings View**: Settings now maintains navigation tabs instead of separate view
+
+## Development Status
+
+🚀 **Production Ready**: Core monitoring system with full API access
+🔧 **Active Development**: Continuous improvements and feature additions
+📊 **Real-time Monitoring**: Live dashboard with comprehensive job management
+🛡️ **Secure**: Enterprise-grade security with proper authentication and rate limiting

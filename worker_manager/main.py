@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from typing import List, Dict, Optional
 import uuid
 import json
+import psycopg2
+import psycopg2.extras
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -119,8 +121,6 @@ class ScalableWorkerManager:
     
     def create_job_tasks(self, job: Dict) -> List[JobTask]:
         """Break job into individual source tasks for parallel processing"""
-        import psycopg2
-        import uuid
         from datetime import datetime
         
         # Create a proper job_run record in the database
@@ -129,7 +129,7 @@ class ScalableWorkerManager:
         try:
             # Connect to database to create job_run record
             DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://monitoring_user:monitoring_pass@localhost:5432/monitoring_db")
-            conn = psycopg2.connect(DATABASE_URL)
+            conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
             conn.autocommit = True
             
             with conn.cursor() as cur:
@@ -632,14 +632,12 @@ class ScalableWorkerManager:
     async def finalize_job_run(self, job_run_id: str, sources_processed: int, alerts_generated: int, 
                               analysis_results: List[Dict], error_message: str = None):
             """Update job_run record with final results and analysis summary"""
-            import psycopg2
-            import json
             from datetime import datetime
             
             try:
                 # Connect to database
                 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://monitoring_user:monitoring_pass@localhost:5432/monitoring_db")
-                conn = psycopg2.connect(DATABASE_URL)
+                conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
                 conn.autocommit = True
                 
                 # Prepare analysis summary

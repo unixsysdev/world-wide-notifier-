@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timedelta
 import uuid
 from typing import List, Optional
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, validator, Field
 import os
 import jwt
 import requests
@@ -37,6 +37,9 @@ redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
 
 # Database connection
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://monitoring_user:monitoring_pass@localhost:5432/monitoring_db")
+
+# Data storage service connection
+DATA_STORAGE_URL = os.getenv("DATA_STORAGE_URL", "http://localhost:8004")
 
 # Google OAuth configuration
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
@@ -280,12 +283,16 @@ class APIKeyCreate(BaseModel):
 
 class APIKeyResponse(BaseModel):
     id: str
-    name: str
+    name: str = Field(..., alias='key_name')
     key_prefix: str
     is_active: bool
     rate_limit_per_minute: int
     last_used_at: Optional[datetime]
     created_at: datetime
+    
+    class Config:
+        populate_by_name = True
+
 
 class APIKeyFullResponse(BaseModel):
     id: str
@@ -956,7 +963,7 @@ async def update_job(job_id: str, job: JobCreate, current_user=Depends(get_curre
     }
 
 
-@app.get("/jobs")
+@app.get("/jobs", response_model=List[JobResponse])
 async def get_jobs(
     current_user=Depends(get_current_user),
     search: str = None,
@@ -995,23 +1002,17 @@ async def get_jobs(
             db_jobs = cur.fetchall()
     
     for job in db_jobs:
-        jobs.append({
-            "id": job['id'],
-            "name": job['name'],
-            "description": job['description'],
-            "sources": job['sources'],
-            "prompt": job['prompt'],
-            "frequency_minutes": job['frequency_minutes'],
-            "threshold_score": job['threshold_score'],
-            "is_active": job['is_active'],
-            "notification_channel_ids": job.get('notification_channel_ids', []),
-            "alert_cooldown_minutes": job.get('alert_cooldown_minutes', 60),
-            "max_alerts_per_hour": job.get('max_alerts_per_hour', 5),
-            "repeat_frequency_minutes": job.get('repeat_frequency_minutes', 60),
-            "max_repeats": job.get('max_repeats', 5),
-            "require_acknowledgment": job.get('require_acknowledgment', True),
-            "created_at": job['created_at'].isoformat()
-        })
+        jobs.append(JobResponse(
+            id=job['id'],
+            name=job['name'],
+            description=job['description'],
+            sources=job['sources'],
+            prompt=job['prompt'],
+            frequency_minutes=job['frequency_minutes'],
+            threshold_score=job['threshold_score'],
+            is_active=job['is_active'],
+            created_at=job['created_at'].isoformat()
+        ))
     
     return jobs
 
@@ -1345,6 +1346,79 @@ async def get_latest_job_run(job_id: str, current_user=Depends(get_current_user)
                     "analysis_summary": latest_run['analysis_summary']
                 }
             }
+
+@app.get("/jobs/{job_id}/historical-data")
+async def get_job_historical_data(job_id: str, limit: int = 10, current_user=Depends(get_current_user)):
+    """Get detailed historical data for a job from MongoDB"""
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            # Verify job ownership
+            cur.execute(
+                "SELECT user_id FROM jobs WHERE id = %s",
+                (job_id,)
+            )
+            job_data = cur.fetchone()
+            
+            if not job_data:
+                raise HTTPException(status_code=404, detail="Job not found")
+            
+            if job_data['user_id'] != current_user['id']:
+                raise HTTPException(status_code=403, detail="Access denied")
+    
+    try:
+        # Get historical data from MongoDB through data storage service
+        import httpx
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{DATA_STORAGE_URL}/job-executions/job/{job_id}",
+                headers={"X-Internal-API-Key": INTERNAL_API_KEY},
+                params={"limit": limit}
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                raise HTTPException(status_code=response.status_code, detail="Failed to fetch historical data")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching historical data: {str(e)}")
+
+@app.get("/jobs/{job_id}/runs/{run_id}/detailed")
+async def get_job_run_detailed(job_id: str, run_id: str, current_user=Depends(get_current_user)):
+    """Get detailed data for a specific job run from MongoDB"""
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            # Verify job ownership
+            cur.execute(
+                "SELECT user_id FROM jobs WHERE id = %s",
+                (job_id,)
+            )
+            job_data = cur.fetchone()
+            
+            if not job_data:
+                raise HTTPException(status_code=404, detail="Job not found")
+            
+            if job_data['user_id'] != current_user['id']:
+                raise HTTPException(status_code=403, detail="Access denied")
+    
+    try:
+        # Get detailed run data from MongoDB through data storage service
+        import httpx
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{DATA_STORAGE_URL}/job-execution/{run_id}",
+                headers={"X-Internal-API-Key": INTERNAL_API_KEY}
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            elif response.status_code == 404:
+                raise HTTPException(status_code=404, detail="Job run not found")
+            else:
+                raise HTTPException(status_code=response.status_code, detail="Failed to fetch run details")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching run details: {str(e)}")
 
 @app.get("/alerts")
 async def get_alerts(
@@ -2076,9 +2150,25 @@ async def get_jobs_api(
                 """,
                 (user_data['user_id'], limit, offset)
             )
-            jobs = cur.fetchall()
+            db_jobs = cur.fetchall()
+    
+    # Convert database rows to JobResponse objects with proper datetime formatting
+    jobs = []
+    for job in db_jobs:
+        jobs.append(JobResponse(
+            id=job['id'],
+            name=job['name'],
+            description=job['description'],
+            sources=job['sources'],
+            prompt=job['prompt'],
+            frequency_minutes=job['frequency_minutes'],
+            threshold_score=job['threshold_score'],
+            is_active=job['is_active'],
+            created_at=job['created_at'].isoformat()
+        ))
     
     return jobs
+
 
 @app.post("/api/v1/jobs", response_model=JobResponse)
 async def create_job_api(
@@ -2113,22 +2203,19 @@ async def create_job_api(
             result = cur.fetchone()
             conn.commit()
     
-    # Return the created job
-    return {
-        'id': result['id'],
-        'name': job_data.name,
-        'description': job_data.description,
-        'sources': job_data.sources,
-        'prompt': job_data.prompt,
-        'frequency_minutes': job_data.frequency_minutes,
-        'threshold_score': job_data.threshold_score,
-        'is_active': True,
-        'notification_channel_ids': job_data.notification_channel_ids,
-        'alert_cooldown_minutes': job_data.alert_cooldown_minutes,
-        'max_alerts_per_hour': job_data.max_alerts_per_hour,
-        'created_at': result['created_at'],
-        'updated_at': result['updated_at']
-    }
+    # Return the created job with proper datetime formatting
+    return JobResponse(
+        id=result['id'],
+        name=job_data.name,
+        description=job_data.description,
+        sources=job_data.sources,
+        prompt=job_data.prompt,
+        frequency_minutes=job_data.frequency_minutes,
+        threshold_score=job_data.threshold_score,
+        is_active=True,
+        created_at=result['created_at'].isoformat()
+    )
+
 
 @app.get("/api/v1/jobs/{job_id}", response_model=JobResponse)
 async def get_job_api(
@@ -2155,7 +2242,18 @@ async def get_job_api(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     
-    return job
+    return JobResponse(
+        id=job['id'],
+        name=job['name'],
+        description=job['description'],
+        sources=job['sources'],
+        prompt=job['prompt'],
+        frequency_minutes=job['frequency_minutes'],
+        threshold_score=job['threshold_score'],
+        is_active=job['is_active'],
+        created_at=job['created_at'].isoformat()
+    )
+
 
 @app.put("/api/v1/jobs/{job_id}", response_model=JobResponse)
 async def update_job_api(
@@ -2197,21 +2295,18 @@ async def update_job_api(
             
             conn.commit()
     
-    return {
-        'id': result['id'],
-        'name': job_data.name,
-        'description': job_data.description,
-        'sources': job_data.sources,
-        'prompt': job_data.prompt,
-        'frequency_minutes': job_data.frequency_minutes,
-        'threshold_score': job_data.threshold_score,
-        'is_active': True,
-        'notification_channel_ids': job_data.notification_channel_ids,
-        'alert_cooldown_minutes': job_data.alert_cooldown_minutes,
-        'max_alerts_per_hour': job_data.max_alerts_per_hour,
-        'created_at': result['created_at'],
-        'updated_at': result['updated_at']
-    }
+    return JobResponse(
+        id=result['id'],
+        name=job_data.name,
+        description=job_data.description,
+        sources=job_data.sources,
+        prompt=job_data.prompt,
+        frequency_minutes=job_data.frequency_minutes,
+        threshold_score=job_data.threshold_score,
+        is_active=True,
+        created_at=result['created_at'].isoformat()
+    )
+
 
 @app.delete("/api/v1/jobs/{job_id}")
 async def delete_job_api(
@@ -2271,7 +2366,83 @@ async def get_job_runs_api(
     
     return runs
 
-@app.get("/api/v1/jobs/{job_id}/alerts")
+@app.get("/api/v1/jobs/{job_id}/historical-data")
+async def get_job_historical_data_api(
+    request: Request,
+    job_id: str,
+    limit: int = 10,
+    offset: int = 0
+):
+    """Get detailed historical data for a job from MongoDB via API"""
+    user_data = get_current_api_user(request)
+    
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            # Verify job ownership
+            cur.execute(
+                "SELECT user_id FROM jobs WHERE id = %s AND user_id = %s",
+                (job_id, user_data['user_id'])
+            )
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Job not found")
+    
+    try:
+        # Get historical data from MongoDB through data storage service
+        import httpx
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{DATA_STORAGE_URL}/job-executions/job/{job_id}",
+                headers={"X-Internal-API-Key": INTERNAL_API_KEY},
+                params={"limit": limit, "offset": offset}
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                raise HTTPException(status_code=response.status_code, detail="Failed to fetch historical data")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching historical data: {str(e)}")
+
+@app.get("/api/v1/jobs/{job_id}/runs/{run_id}/detailed")
+async def get_job_run_detailed_api(
+    request: Request,
+    job_id: str,
+    run_id: str
+):
+    """Get detailed data for a specific job run from MongoDB via API"""
+    user_data = get_current_api_user(request)
+    
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            # Verify job ownership
+            cur.execute(
+                "SELECT user_id FROM jobs WHERE id = %s AND user_id = %s",
+                (job_id, user_data['user_id'])
+            )
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Job not found")
+    
+    try:
+        # Get detailed run data from MongoDB through data storage service
+        import httpx
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{DATA_STORAGE_URL}/job-execution/{run_id}",
+                headers={"X-Internal-API-Key": INTERNAL_API_KEY}
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            elif response.status_code == 404:
+                raise HTTPException(status_code=404, detail="Job run not found")
+            else:
+                raise HTTPException(status_code=response.status_code, detail="Failed to fetch run details")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching run details: {str(e)}")
+
+@app.get("/api/v1/jobs/{job_id}/alerts", response_model=List[AlertResponse])
 async def get_job_alerts_api(
     request: Request,
     job_id: str,
@@ -2294,18 +2465,36 @@ async def get_job_alerts_api(
             # Get job alerts
             cur.execute(
                 """
-                SELECT a.id, a.title, a.content, a.source_url, a.relevance_score,
-                       a.is_sent, a.is_read, a.is_acknowledged, a.created_at,
-                       j.name as job_name
+                SELECT a.id, a.job_id, a.title, a.content, a.source_url, a.relevance_score,
+                       a.is_sent, a.is_read, a.is_acknowledged, a.acknowledged_at,
+                       a.repeat_count, a.next_repeat_at, a.created_at
                 FROM alerts a
-                JOIN jobs j ON a.job_id = j.id
                 WHERE a.job_id = %s
                 ORDER BY a.created_at DESC
                 LIMIT %s OFFSET %s
                 """,
                 (job_id, limit, offset)
             )
-            alerts = cur.fetchall()
+            db_alerts = cur.fetchall()
+    
+    # Convert database rows to AlertResponse objects with proper datetime formatting
+    alerts = []
+    for alert in db_alerts:
+        alerts.append(AlertResponse(
+            id=alert['id'],
+            job_id=alert['job_id'],
+            title=alert['title'],
+            content=alert['content'],
+            source_url=alert['source_url'],
+            relevance_score=alert['relevance_score'],
+            is_sent=alert['is_sent'],
+            is_read=alert['is_read'],
+            is_acknowledged=alert['is_acknowledged'],
+            acknowledged_at=alert['acknowledged_at'].isoformat() if alert['acknowledged_at'] else None,
+            repeat_count=alert['repeat_count'],
+            next_repeat_at=alert['next_repeat_at'].isoformat() if alert['next_repeat_at'] else None,
+            created_at=alert['created_at'].isoformat()
+        ))
     
     return alerts
 
@@ -2339,7 +2528,7 @@ async def run_job_now_api(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to queue job: {str(e)}")
 
-@app.get("/api/v1/alerts")
+@app.get("/api/v1/alerts", response_model=List[AlertResponse])
 async def get_alerts_api(
     request: Request,
     limit: int = 50,
@@ -2359,9 +2548,9 @@ async def get_alerts_api(
         with conn.cursor() as cur:
             cur.execute(
                 f"""
-                SELECT a.id, a.title, a.content, a.source_url, a.relevance_score,
-                       a.is_sent, a.is_read, a.is_acknowledged, a.created_at,
-                       j.name as job_name, j.id as job_id
+                SELECT a.id, a.job_id, a.title, a.content, a.source_url, a.relevance_score,
+                       a.is_sent, a.is_read, a.is_acknowledged, a.acknowledged_at,
+                       a.repeat_count, a.next_repeat_at, a.created_at
                 FROM alerts a
                 JOIN jobs j ON a.job_id = j.id
                 WHERE {where_clause}
@@ -2370,7 +2559,26 @@ async def get_alerts_api(
                 """,
                 params + [limit, offset]
             )
-            alerts = cur.fetchall()
+            db_alerts = cur.fetchall()
+    
+    # Convert database rows to AlertResponse objects with proper datetime formatting
+    alerts = []
+    for alert in db_alerts:
+        alerts.append(AlertResponse(
+            id=alert['id'],
+            job_id=alert['job_id'],
+            title=alert['title'],
+            content=alert['content'],
+            source_url=alert['source_url'],
+            relevance_score=alert['relevance_score'],
+            is_sent=alert['is_sent'],
+            is_read=alert['is_read'],
+            is_acknowledged=alert['is_acknowledged'],
+            acknowledged_at=alert['acknowledged_at'].isoformat() if alert['acknowledged_at'] else None,
+            repeat_count=alert['repeat_count'],
+            next_repeat_at=alert['next_repeat_at'].isoformat() if alert['next_repeat_at'] else None,
+            created_at=alert['created_at'].isoformat()
+        ))
     
     return alerts
 @app.get("/internal/jobs/active")

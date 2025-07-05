@@ -58,9 +58,11 @@ services:
       - STRIPE_PREMIUM_PLUS_PRICE_ID=${STRIPE_PREMIUM_PLUS_PRICE_ID}
       - HOSTNAME=${HOSTNAME:-http://localhost:3000}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - DATA_STORAGE_URL=http://data_storage_service:8004
     depends_on:
       - postgres
       - redis
+      - data_storage_service
     volumes:
       - ./api_service:/app
     networks:

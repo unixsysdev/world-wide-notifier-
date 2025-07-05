@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from './AuthContext';
 import axios from 'axios';
 
-const Settings = ({ onBack }) => {
-  const { user } = useAuth();
+const Settings = ({ user, logout, userSubscription, setCurrentView, currentView, alerts, onBack }) => {
   const [channels, setChannels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -11,14 +9,12 @@ const Settings = ({ onBack }) => {
     channel_type: 'email',
     config: {}
   });
-  const [userSubscription, setUserSubscription] = useState(null);
   const [billingHistory, setBillingHistory] = useState([]);
 
   const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
   useEffect(() => {
     fetchChannels();
-    fetchSubscription();
     fetchBillingHistory();
   }, []);
 
@@ -33,14 +29,7 @@ const Settings = ({ onBack }) => {
     }
   };
 
-  const fetchSubscription = async () => {
-    try {
-      const response = await axios.get(`${API_URL}/subscription`);
-      setUserSubscription(response.data);
-    } catch (error) {
-      console.error('Error fetching subscription:', error);
-    }
-  };
+
 
   const fetchBillingHistory = async () => {
     try {
@@ -89,7 +78,7 @@ const Settings = ({ onBack }) => {
     try {
       const response = await axios.post(`${API_URL}/subscription/cancel`);
       alert(response.data.message);
-      fetchSubscription(); // Refresh subscription data
+      // Subscription data will be refreshed by parent component
     } catch (error) {
       console.error('Error cancelling subscription:', error);
       alert('Failed to cancel subscription. Please try again.');
@@ -222,16 +211,75 @@ const Settings = ({ onBack }) => {
 
   return (
     <div className="min-h-screen bg-gray-100">
+      {/* Navigation Header */}
+      <nav className="bg-white shadow-sm">
+        <div className="container mx-auto px-4">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center space-x-8">
+              <h1 className="text-xl font-bold text-gray-900">AI Monitoring</h1>
+              <div className="flex space-x-4">
+                <button
+                  onClick={() => setCurrentView('dashboard')}
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${
+                    currentView === 'dashboard' 
+                      ? 'bg-blue-100 text-blue-700' 
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Dashboard
+                </button>
+                <button
+                  onClick={() => setCurrentView('alerts')}
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${
+                    currentView === 'alerts' 
+                      ? 'bg-blue-100 text-blue-700' 
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Alerts
+                  {alerts && alerts.filter(a => !a.is_acknowledged).length > 0 && (
+                    <span className="ml-1 bg-red-500 text-white text-xs rounded-full px-2 py-0.5">
+                      {alerts.filter(a => !a.is_acknowledged).length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  onClick={() => setCurrentView('settings')}
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${
+                    currentView === 'settings' 
+                      ? 'bg-blue-100 text-blue-700' 
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Settings
+                </button>
+                <button
+                  onClick={() => setCurrentView('api')}
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${
+                    currentView === 'api' 
+                      ? 'bg-blue-100 text-blue-700' 
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  API
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center space-x-4">
+              <span className="text-sm text-gray-600">Welcome, {user?.name}</span>
+              <button
+                onClick={logout}
+                className="text-sm text-red-600 hover:text-red-800"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      </nav>
+
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto">
-          <div className="mb-6">
-            <button
-              onClick={onBack}
-              className="text-blue-600 hover:text-blue-800 font-medium"
-            >
-              ← Back to Dashboard
-            </button>
-          </div>
           
           <div className="bg-white overflow-hidden shadow rounded-lg">
             <div className="px-4 py-5 sm:p-6">

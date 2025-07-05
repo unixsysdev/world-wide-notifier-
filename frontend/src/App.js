@@ -17,7 +17,13 @@ const MainApp = () => {
   const [userSubscription, setUserSubscription] = useState(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showPlanModal, setShowPlanModal] = useState(false);
-  const [currentView, setCurrentView] = useState('dashboard');
+  const [currentView, setCurrentView] = useState(() => {
+    const path = window.location.pathname;
+    if (path.includes('/alerts')) return 'alerts';
+    if (path.includes('/settings')) return 'settings';
+    if (path.includes('/api')) return 'api';
+    return 'dashboard';
+  });
   const [dataLoading, setDataLoading] = useState(true);
   const [alertsLoading, setAlertsLoading] = useState(true);
 
@@ -39,6 +45,27 @@ const MainApp = () => {
 
   const [editingJob, setEditingJob] = useState(null);
   const [selectedJobFilter, setSelectedJobFilter] = useState(null);
+
+  // Handle view changes with URL updates
+  const handleViewChange = (view) => {
+    setCurrentView(view);
+    const newPath = view === 'dashboard' ? '/' : `/${view}`;
+    window.history.pushState(null, '', newPath);
+  };
+
+  // Handle browser back/forward buttons
+  useEffect(() => {
+    const handlePopState = () => {
+      const path = window.location.pathname;
+      if (path.includes('/alerts')) handleViewChange('alerts');
+      else if (path.includes('/settings')) handleViewChange('settings');
+      else if (path.includes('/api')) handleViewChange('api');
+      else setCurrentView('dashboard');
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -188,7 +215,7 @@ const MainApp = () => {
 
   const handleManageSubscription = async () => {
     // For now, just redirect to Settings where subscription management is available
-    setCurrentView('settings');
+    handleViewChange('settings');
   };
 
   const handleCancelSubscription = async () => {
@@ -430,7 +457,15 @@ const MainApp = () => {
   }
 
   if (currentView === 'settings') {
-    return <Settings onBack={() => setCurrentView('dashboard')} />;
+    return <Settings 
+      user={user} 
+      logout={logout} 
+      userSubscription={userSubscription} 
+      setCurrentView={handleViewChange} 
+      currentView={currentView}
+      alerts={alerts}
+      onBack={() => handleViewChange('dashboard')} 
+    />;
   }
 
   if (currentView === 'api') {
@@ -438,8 +473,10 @@ const MainApp = () => {
       user={user} 
       logout={logout} 
       userSubscription={userSubscription} 
-      setCurrentView={setCurrentView} 
-      onBack={() => setCurrentView('dashboard')} 
+      setCurrentView={handleViewChange} 
+      currentView={currentView}
+      alerts={alerts}
+      onBack={() => handleViewChange('dashboard')} 
     />;
   }
 
@@ -465,34 +502,49 @@ const MainApp = () => {
                 <div className="flex space-x-4">
                   <button
                     onClick={() => {
-                      setCurrentView('dashboard');
+                      handleViewChange('dashboard');
                       setSelectedJobFilter(null);
                     }}
-                    className="px-3 py-2 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700"
+                    className={`px-3 py-2 rounded-md text-sm font-medium ${
+                      currentView === 'dashboard' 
+                        ? 'bg-blue-100 text-blue-700' 
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
                   >
                     Dashboard
                   </button>
                   <button
-                    onClick={() => setCurrentView('alerts')}
-                    className="px-3 py-2 rounded-md text-sm font-medium bg-blue-100 text-blue-700"
+                    onClick={() => handleViewChange('alerts')}
+                    className={`px-3 py-2 rounded-md text-sm font-medium ${
+                      currentView === 'alerts' 
+                        ? 'bg-blue-100 text-blue-700' 
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
                   >
                     Alerts
+                    {alerts.filter(a => !a.is_acknowledged).length > 0 && (
+                      <span className="ml-1 bg-red-500 text-white text-xs rounded-full px-2 py-0.5">
+                        {alerts.filter(a => !a.is_acknowledged).length}
+                      </span>
+                    )}
                   </button>
                   <button
-                    onClick={() => setCurrentView('settings')}
-                    className="px-3 py-2 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700"
+                    onClick={() => handleViewChange('settings')}
+                    className={`px-3 py-2 rounded-md text-sm font-medium ${
+                      currentView === 'settings' 
+                        ? 'bg-blue-100 text-blue-700' 
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
                   >
                     Settings
                   </button>
                   <button
-                    onClick={() => setCurrentView('api')}
-                    className="px-3 py-2 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700"
-                  >
-                    API
-                  </button>
-                  <button
-                    onClick={() => setCurrentView('api')}
-                    className="px-3 py-2 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700"
+                    onClick={() => handleViewChange('api')}
+                    className={`px-3 py-2 rounded-md text-sm font-medium ${
+                      currentView === 'api' 
+                        ? 'bg-blue-100 text-blue-700' 
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
                   >
                     API
                   </button>
@@ -723,7 +775,7 @@ const MainApp = () => {
               <h1 className="text-xl font-bold text-gray-900">AI Monitoring</h1>
               <div className="flex space-x-4">
                 <button
-                  onClick={() => setCurrentView('dashboard')}
+                  onClick={() => handleViewChange('dashboard')}
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
                     currentView === 'dashboard' 
                       ? 'bg-blue-100 text-blue-700' 
@@ -733,7 +785,7 @@ const MainApp = () => {
                   Dashboard
                 </button>
                 <button
-                  onClick={() => setCurrentView('alerts')}
+                  onClick={() => handleViewChange('alerts')}
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
                     currentView === 'alerts' 
                       ? 'bg-blue-100 text-blue-700' 
@@ -748,7 +800,7 @@ const MainApp = () => {
                   )}
                 </button>
                 <button
-                  onClick={() => setCurrentView('settings')}
+                  onClick={() => handleViewChange('settings')}
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
                     currentView === 'settings' 
                       ? 'bg-blue-100 text-blue-700' 
@@ -758,7 +810,7 @@ const MainApp = () => {
                   Settings
                 </button>
                 <button
-                  onClick={() => setCurrentView('api')}
+                  onClick={() => handleViewChange('api')}
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
                     currentView === 'api' 
                       ? 'bg-blue-100 text-blue-700' 
@@ -1353,7 +1405,7 @@ const MainApp = () => {
                         <button
                           onClick={() => {
                             setSelectedJobFilter(job.id);
-                            setCurrentView('alerts');
+                            handleViewChange('alerts');
                           }}
                           className="mt-2 text-xs text-blue-600 hover:text-blue-800"
                         >
@@ -1401,7 +1453,7 @@ const MainApp = () => {
                       <button
                         onClick={() => {
                           setSelectedJobFilter(job.id);
-                          setCurrentView('alerts');
+                          handleViewChange('alerts');
                         }}
                         className="inline-flex items-center px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium"
                       >
