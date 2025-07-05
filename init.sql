@@ -112,6 +112,20 @@ CREATE TABLE job_notification_settings (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- API keys table
+CREATE TABLE api_keys (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    key_name VARCHAR(255) NOT NULL,
+    key_hash VARCHAR(255) NOT NULL UNIQUE, -- SHA-256 hash of the actual key
+    key_prefix VARCHAR(20) NOT NULL, -- First 8 chars for display (e.g., "ak_live_12345678")
+    is_active BOOLEAN DEFAULT TRUE,
+    last_used_at TIMESTAMP,
+    rate_limit_per_minute INTEGER DEFAULT 60,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- User subscription events log
 CREATE TABLE subscription_events (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -136,3 +150,6 @@ CREATE INDEX idx_job_notification_settings_job_id ON job_notification_settings(j
 CREATE INDEX idx_subscription_events_user_id ON subscription_events(user_id);
 CREATE INDEX idx_users_subscription_tier ON users(subscription_tier);
 CREATE INDEX idx_users_stripe_customer_id ON users(stripe_customer_id);
+CREATE INDEX idx_api_keys_user_id ON api_keys(user_id);
+CREATE INDEX idx_api_keys_key_hash ON api_keys(key_hash);
+CREATE INDEX idx_api_keys_active ON api_keys(is_active);

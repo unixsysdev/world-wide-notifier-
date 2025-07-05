@@ -34,6 +34,7 @@ class ScalableWorkerManager:
         hostname = os.getenv("HOSTNAME", "localhost")
         self.browser_service_url = os.getenv("BROWSER_SERVICE_URL", f"http://{hostname}:8001")
         self.llm_service_url = os.getenv("LLM_SERVICE_URL", f"http://{hostname}:8002")
+        self.data_storage_url = os.getenv("DATA_STORAGE_URL", f"http://{hostname}:8004")
         self.worker_id = str(uuid.uuid4())[:8]
         self.running = True
         
@@ -140,6 +141,13 @@ class ScalableWorkerManager:
             conn.close()
             logger.info(f"Created job_run record: {job_run_id} for job {job['id']}")
             
+            # Start MongoDB tracking (non-blocking)
+            try:
+                loop = asyncio.get_event_loop()
+                loop.create_task(self.start_job_execution_tracking(job, job_run_id))
+            except Exception as e:
+                logger.warning(f"Could not start job execution tracking: {e}")
+            
         except Exception as e:
             logger.error(f"Failed to create job_run record: {e}")
             # Fallback to time-based ID if database fails
@@ -159,6 +167,137 @@ class ScalableWorkerManager:
             tasks.append(task)
         
         return tasks
+
+    async def start_job_execution_tracking(self, job: Dict, job_run_id: str) -> bool:
+        """Start tracking job execution in MongoDB"""
+        try:
+            internal_api_key = os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production")
+            headers = {"X-Internal-API-Key": internal_api_key, "Content-Type": "application/json"}
+            
+            execution_data = {
+                "job_id": job['id'],
+                "job_run_id": job_run_id,
+                "user_id": job['user_id'],
+                "job_name": job['name'],
+                "user_prompt": job['prompt'],
+                "sources": job['sources'],
+                "frequency_minutes": job['frequency_minutes'],
+                "threshold_score": job['threshold_score'],
+                "started_at": datetime.now().isoformat()
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.data_storage_url}/job-execution/start",
+                    json=execution_data,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    if response.status == 200:
+                        logger.info(f"✅ Started job execution tracking for {job_run_id}")
+                        return True
+                    else:
+                        logger.warning(f"Failed to start job execution tracking: {response.status}")
+                        return False
+        except Exception as e:
+            logger.warning(f"Error starting job execution tracking: {e}")
+            return False
+
+    async def store_source_data(self, job_run_id: str, source_url: str, scrape_result: Dict) -> bool:
+        """Store raw source data in MongoDB"""
+        try:
+            internal_api_key = os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production")
+            headers = {"X-Internal-API-Key": internal_api_key, "Content-Type": "application/json"}
+            
+            source_data = {
+                "source_url": source_url,
+                "raw_html": scrape_result.get('raw_html', ''),
+                "cleaned_content": scrape_result.get('content', ''),
+                "scrape_timestamp": datetime.now().isoformat(),
+                "response_time_ms": scrape_result.get('response_time_ms', 0),
+                "status_code": scrape_result.get('status_code', 200),
+                "error_message": scrape_result.get('error_message')
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.data_storage_url}/job-execution/{job_run_id}/source-data",
+                    json=source_data,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    if response.status == 200:
+                        logger.debug(f"✅ Stored source data for {source_url}")
+                        return True
+                    else:
+                        logger.warning(f"Failed to store source data: {response.status}")
+                        return False
+        except Exception as e:
+            logger.warning(f"Error storing source data: {e}")
+            return False
+
+    async def store_llm_analysis(self, job_run_id: str, source_url: str, analysis_result: Dict, 
+                                user_prompt: str, alert_generated: bool) -> bool:
+        """Store LLM analysis data in MongoDB"""
+        try:
+            internal_api_key = os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production")
+            headers = {"X-Internal-API-Key": internal_api_key, "Content-Type": "application/json"}
+            
+            analysis_data = {
+                "source_url": source_url,
+                "llm_provider": analysis_result.get('provider', 'unknown'),
+                "model_name": analysis_result.get('model', 'unknown'),
+                "system_prompt": analysis_result.get('system_prompt', 'Default monitoring prompt'),
+                "user_prompt": user_prompt,
+                "raw_response": analysis_result.get('raw_response', ''),
+                "parsed_response": analysis_result.get('parsed_response', {}),
+                "relevance_score": analysis_result.get('relevance_score', 0),
+                "processing_time_ms": analysis_result.get('processing_time_ms', 0),
+                "analysis_timestamp": datetime.now().isoformat(),
+                "alert_generated": alert_generated,
+                "alert_title": analysis_result.get('title') if alert_generated else None,
+                "alert_content": analysis_result.get('summary') if alert_generated else None
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.data_storage_url}/job-execution/{job_run_id}/llm-analysis",
+                    json=analysis_data,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    if response.status == 200:
+                        logger.debug(f"✅ Stored LLM analysis for {source_url}")
+                        return True
+                    else:
+                        logger.warning(f"Failed to store LLM analysis: {response.status}")
+                        return False
+        except Exception as e:
+            logger.warning(f"Error storing LLM analysis: {e}")
+            return False
+
+    async def complete_job_execution_tracking(self, job_run_id: str, summary: Dict) -> bool:
+        """Complete job execution tracking with final summary"""
+        try:
+            internal_api_key = os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production")
+            headers = {"X-Internal-API-Key": internal_api_key, "Content-Type": "application/json"}
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.data_storage_url}/job-execution/{job_run_id}/complete",
+                    json=summary,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    if response.status == 200:
+                        logger.info(f"✅ Completed job execution tracking for {job_run_id}")
+                        return True
+                    else:
+                        logger.warning(f"Failed to complete job execution tracking: {response.status}")
+                        return False
+        except Exception as e:
+            logger.warning(f"Error completing job execution tracking: {e}")
+            return False
 
     
     async def should_create_alert(self, task: JobTask, analysis_result: Dict) -> bool:
@@ -313,6 +452,9 @@ class ScalableWorkerManager:
                     logger.warning(f"Failed to scrape {task.source_url}")
                     return False
                 
+                # Store source data (non-blocking)
+                asyncio.create_task(self.store_source_data(task.job_run_id, task.source_url, scrape_result))
+                
                 # Analyze content
                 analysis_result = await self.analyze_content_async(
                     session, 
@@ -385,11 +527,25 @@ class ScalableWorkerManager:
                     self.redis_client.lpush("alert_queue", json.dumps(alert_data))
                     
                     logger.info(f"🚨 ALERT GENERATED! {task.source_url} (score: {relevance_score})")
+                    
+                    # Store LLM analysis with alert info (non-blocking)
+                    asyncio.create_task(self.store_llm_analysis(
+                        task.job_run_id, task.source_url, analysis_result, 
+                        task.prompt, True
+                    ))
+                    
                     return analysis_info
                 else:
                     logger.info(f"Score {relevance_score} below threshold {task.threshold_score}")
                     analysis_info['alert_generated'] = False
                     analysis_info['below_threshold'] = True
+                    
+                    # Store LLM analysis without alert (non-blocking)
+                    asyncio.create_task(self.store_llm_analysis(
+                        task.job_run_id, task.source_url, analysis_result, 
+                        task.prompt, False
+                    ))
+                    
                     return analysis_info
                     
             except Exception as e:
@@ -517,6 +673,13 @@ class ScalableWorkerManager:
                 
                 conn.close()
                 logger.info(f"Finalized job_run {job_run_id}: {sources_processed} sources, {alerts_generated} alerts")
+                
+                # Complete MongoDB tracking (non-blocking)
+                try:
+                    loop = asyncio.get_event_loop()
+                    loop.create_task(self.complete_job_execution_tracking(job_run_id, analysis_summary))
+                except Exception as e:
+                    logger.warning(f"Could not complete job execution tracking: {e}")
                 
             except Exception as e:
                 logger.error(f"Failed to finalize job_run {job_run_id}: {e}")

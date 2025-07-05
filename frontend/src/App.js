@@ -3,6 +3,7 @@ import axios from 'axios';
 import { AuthProvider, useAuth } from './AuthContext';
 import Login from './Login';
 import Settings from './Settings';
+import APIManagement from './APIManagement';
 import './App.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -87,6 +88,8 @@ const MainApp = () => {
       console.error('Error fetching subscription:', error);
     }
   };
+
+
 
   const acknowledgeAlert = async (alertId) => {
     try {
@@ -430,6 +433,16 @@ const MainApp = () => {
     return <Settings onBack={() => setCurrentView('dashboard')} />;
   }
 
+  if (currentView === 'api') {
+    return <APIManagement 
+      user={user} 
+      logout={logout} 
+      userSubscription={userSubscription} 
+      setCurrentView={setCurrentView} 
+      onBack={() => setCurrentView('dashboard')} 
+    />;
+  }
+
   // Filter alerts based on selected job
   const filteredAlerts = selectedJobFilter 
     ? alerts.filter(alert => alert.job_id === selectedJobFilter)
@@ -470,6 +483,18 @@ const MainApp = () => {
                     className="px-3 py-2 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700"
                   >
                     Settings
+                  </button>
+                  <button
+                    onClick={() => setCurrentView('api')}
+                    className="px-3 py-2 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700"
+                  >
+                    API
+                  </button>
+                  <button
+                    onClick={() => setCurrentView('api')}
+                    className="px-3 py-2 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700"
+                  >
+                    API
                   </button>
                 </div>
               </div>
@@ -731,6 +756,16 @@ const MainApp = () => {
                   }`}
                 >
                   Settings
+                </button>
+                <button
+                  onClick={() => setCurrentView('api')}
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${
+                    currentView === 'api' 
+                      ? 'bg-blue-100 text-blue-700' 
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  API
                 </button>
               </div>
             </div>

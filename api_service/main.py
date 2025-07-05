@@ -12,6 +12,10 @@ import jwt
 import requests
 import stripe
 import json
+import secrets
+import hashlib
+import hmac
+import time
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 import psycopg2
@@ -268,7 +272,34 @@ class StripeWebhookEvent(BaseModel):
 
 class SubscriptionUpgradeRequest(BaseModel):
     tier: str = "premium"  # premium or premium_plus
-# Helper functions for subscription management
+
+# API Key Management Models
+class APIKeyCreate(BaseModel):
+    name: str
+    rate_limit_per_minute: Optional[int] = None  # If None, use tier default
+
+class APIKeyResponse(BaseModel):
+    id: str
+    name: str
+    key_prefix: str
+    is_active: bool
+    rate_limit_per_minute: int
+    last_used_at: Optional[datetime]
+    created_at: datetime
+
+class APIKeyFullResponse(BaseModel):
+    id: str
+    name: str
+    key: str  # Only returned once upon creation
+    key_prefix: str
+    is_active: bool
+    rate_limit_per_minute: int
+    created_at: datetime
+
+class APIKeyUpdate(BaseModel):
+    name: Optional[str] = None
+    is_active: Optional[bool] = None
+    rate_limit_per_minute: Optional[int] = None# Helper functions for subscription management
 def get_user_subscription_info(user_id: str):
     """Get user subscription information with computed limits"""
     with get_db_connection() as conn:
@@ -286,9 +317,9 @@ def get_user_subscription_info(user_id: str):
     
     # Define tier limits based on requirements
     tier_config = {
-        'free': {'alert_limit': 3, 'min_frequency_minutes': 60},  # 3 alerts/day, hourly checks
-        'premium': {'alert_limit': 100, 'min_frequency_minutes': 1},  # 100 alerts/day, 1min checks
-        'premium_plus': {'alert_limit': 999999, 'min_frequency_minutes': 1}  # Unlimited alerts, 1min checks
+        'free': {'alert_limit': 3, 'min_frequency_minutes': 60, 'max_jobs': 3},  # 3 alerts/day, hourly checks
+        'premium': {'alert_limit': 100, 'min_frequency_minutes': 1, 'max_jobs': 10},  # 100 alerts/day, 1min checks, 10 jobs max
+        'premium_plus': {'alert_limit': 999999, 'min_frequency_minutes': 1, 'max_jobs': 999999}  # Unlimited alerts, 1min checks, unlimited jobs
     }
     
     config = tier_config.get(tier, tier_config['free'])
@@ -299,6 +330,7 @@ def get_user_subscription_info(user_id: str):
         'daily_alert_count': user_data['daily_alert_count'],
         'alert_limit': config['alert_limit'],
         'min_frequency_minutes': config['min_frequency_minutes'],
+        'max_jobs': config['max_jobs'],
         'stripe_customer_id': user_data['stripe_customer_id']
     }
 
@@ -313,17 +345,16 @@ def can_create_job(user_id: str, frequency_minutes: int):
     if frequency_minutes < subscription['min_frequency_minutes']:
         return False, f"Minimum frequency for {subscription['tier']} tier is {subscription['min_frequency_minutes']} minutes"
     
-    # Check alert count limits (for free tier)
-    if subscription['tier'] == 'free':
-        with get_db_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT COUNT(*) as job_count FROM jobs WHERE user_id = %s AND is_active = true",
-                    (user_id,)
-                )
-                result = cur.fetchone()
-                if result['job_count'] >= subscription['alert_limit']:
-                    return False, f"Free tier limited to {subscription['alert_limit']} active alerts"
+    # Check job count limits (for all tiers)
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) as job_count FROM jobs WHERE user_id = %s AND is_active = true",
+                (user_id,)
+            )
+            result = cur.fetchone()
+            if result['job_count'] >= subscription['max_jobs']:
+                return False, f"{subscription['tier'].title()} tier limited to {subscription['max_jobs']} active jobs"
     
     return True, ""
 
@@ -331,6 +362,225 @@ def generate_acknowledgment_token():
     """Generate a secure token for email acknowledgment"""
     return str(uuid.uuid4()) + str(uuid.uuid4()).replace('-', '')
 
+# API Key Management Functions
+def generate_api_key():
+    """Generate a new API key"""
+    prefix = "ak_live_"
+    random_part = secrets.token_urlsafe(32)
+    return f"{prefix}{random_part}"
+
+def hash_api_key(key: str) -> str:
+    """Hash an API key for storage"""
+    return hashlib.sha256(key.encode()).hexdigest()
+
+def get_api_key_prefix(key: str) -> str:
+    """Get the prefix for display purposes"""
+    return key[:16] + "..." if len(key) > 16 else key
+
+def get_user_api_keys(user_id: str):
+    """Get all API keys for a user"""
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, key_name, key_prefix, is_active, rate_limit_per_minute, 
+                       last_used_at, created_at
+                FROM api_keys 
+                WHERE user_id = %s 
+                ORDER BY created_at DESC
+                """,
+                (user_id,)
+            )
+            return cur.fetchall()
+
+def create_api_key(user_id: str, name: str, rate_limit_per_minute: int = None):
+    """Create a new API key for a user"""
+    subscription = get_user_subscription_info(user_id)
+    if not subscription:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Set default rate limit based on tier
+    if rate_limit_per_minute is None:
+        tier_limits = {
+            'free': 60,
+            'premium': 120,
+            'premium_plus': 300
+        }
+        rate_limit_per_minute = tier_limits.get(subscription['tier'], 60)
+    
+    # Check if user can create more API keys (limit based on tier)
+    current_keys = get_user_api_keys(user_id)
+    tier_key_limits = {
+        'free': 2,
+        'premium': 5,
+        'premium_plus': 10
+    }
+    max_keys = tier_key_limits.get(subscription['tier'], 2)
+    
+    if len(current_keys) >= max_keys:
+        raise HTTPException(
+            status_code=403, 
+            detail=f"{subscription['tier'].title()} tier limited to {max_keys} API keys"
+        )
+    
+    # Generate key
+    key = generate_api_key()
+    key_hash = hash_api_key(key)
+    key_prefix = get_api_key_prefix(key)
+    
+    # Store in database
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO api_keys (user_id, key_name, key_hash, key_prefix, rate_limit_per_minute)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id, created_at
+                """,
+                (user_id, name, key_hash, key_prefix, rate_limit_per_minute)
+            )
+            result = cur.fetchone()
+            conn.commit()
+    
+    return {
+        'id': result['id'],
+        'name': name,
+        'key': key,
+        'key_prefix': key_prefix,
+        'is_active': True,
+        'rate_limit_per_minute': rate_limit_per_minute,
+        'created_at': result['created_at']
+    }
+
+def verify_api_key(key: str):
+    """Verify an API key and return user information"""
+    key_hash = hash_api_key(key)
+    
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT ak.id, ak.user_id, ak.key_name, ak.rate_limit_per_minute, ak.is_active,
+                       u.email, u.subscription_tier
+                FROM api_keys ak
+                JOIN users u ON ak.user_id = u.id
+                WHERE ak.key_hash = %s AND ak.is_active = true
+                """,
+                (key_hash,)
+            )
+            result = cur.fetchone()
+            
+            if result:
+                # Update last used timestamp
+                cur.execute(
+                    "UPDATE api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE id = %s",
+                    (result['id'],)
+                )
+                conn.commit()
+                
+            return result
+
+def delete_api_key(user_id: str, key_id: str):
+    """Delete an API key"""
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM api_keys WHERE id = %s AND user_id = %s",
+                (key_id, user_id)
+            )
+            if cur.rowcount == 0:
+                raise HTTPException(status_code=404, detail="API key not found")
+            conn.commit()
+
+def update_api_key(user_id: str, key_id: str, updates: dict):
+    """Update an API key"""
+    if not updates:
+        raise HTTPException(status_code=400, detail="No updates provided")
+    
+    set_clauses = []
+    values = []
+    
+    for field, value in updates.items():
+        if field in ['key_name', 'is_active', 'rate_limit_per_minute']:
+            set_clauses.append(f"{field} = %s")
+            values.append(value)
+    
+    if not set_clauses:
+        raise HTTPException(status_code=400, detail="No valid updates provided")
+    
+    set_clauses.append("updated_at = CURRENT_TIMESTAMP")
+    values.extend([key_id, user_id])
+    
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                UPDATE api_keys 
+                SET {', '.join(set_clauses)}
+                WHERE id = %s AND user_id = %s
+                """,
+                values
+            )
+            if cur.rowcount == 0:
+                raise HTTPException(status_code=404, detail="API key not found")
+            conn.commit()
+
+# Rate limiting functionality
+def check_rate_limit(user_id: str, api_key_id: str, rate_limit_per_minute: int):
+    """Check if user has exceeded their rate limit"""
+    current_time = int(time.time())
+    minute_window = current_time // 60
+    
+    key = f"rate_limit:{user_id}:{api_key_id}:{minute_window}"
+    
+    try:
+        current_count = redis_client.get(key)
+        if current_count is None:
+            current_count = 0
+        else:
+            current_count = int(current_count)
+        
+        if current_count >= rate_limit_per_minute:
+            return False, current_count
+        
+        # Increment counter
+        redis_client.incr(key)
+        redis_client.expire(key, 60)  # Expire after 1 minute
+        
+        return True, current_count + 1
+    except Exception as e:
+        # If Redis is down, allow the request but log the error
+        print(f"Rate limiting error: {e}")
+        return True, 0
+
+def get_current_api_user(request: Request):
+    """Get current user from API key"""
+    api_key = request.headers.get("Authorization")
+    if not api_key:
+        raise HTTPException(status_code=401, detail="API key required")
+    
+    # Remove 'Bearer ' prefix if present
+    if api_key.startswith("Bearer "):
+        api_key = api_key[7:]
+    
+    user_data = verify_api_key(api_key)
+    if not user_data:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    
+    # Check rate limit
+    allowed, current_count = check_rate_limit(
+        user_data['user_id'], 
+        user_data['id'], 
+        user_data['rate_limit_per_minute']
+    )
+    
+    if not allowed:
+        raise HTTPException(
+            status_code=429, 
+            detail=f"Rate limit exceeded. Limit: {user_data['rate_limit_per_minute']} requests per minute"
+        )
+    
+    return user_data
 def get_user_alerts(user_id: str, limit: int = 50, include_acknowledged: bool = False):
     """Get alerts for a user"""
     with get_db_connection() as conn:
@@ -1748,6 +1998,381 @@ async def health_check():
     except Exception as e:
         return {"status": "unhealthy", "error": str(e)}
 
+# API Key Management Endpoints
+@app.post("/api-keys", response_model=APIKeyFullResponse)
+async def create_user_api_key(
+    key_data: APIKeyCreate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Create a new API key for the authenticated user"""
+    try:
+        api_key = create_api_key(
+            current_user['id'], 
+            key_data.name, 
+            key_data.rate_limit_per_minute
+        )
+        return api_key
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api-keys", response_model=List[APIKeyResponse])
+async def get_user_api_keys_endpoint(
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all API keys for the authenticated user"""
+    try:
+        keys = get_user_api_keys(current_user['id'])
+        return keys
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api-keys/{key_id}")
+async def update_user_api_key(
+    key_id: str,
+    updates: APIKeyUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Update an API key"""
+    try:
+        update_data = {k: v for k, v in updates.dict().items() if v is not None}
+        update_api_key(current_user['id'], key_id, update_data)
+        return {"message": "API key updated successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api-keys/{key_id}")
+async def delete_user_api_key(
+    key_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Delete an API key"""
+    try:
+        delete_api_key(current_user['id'], key_id)
+        return {"message": "API key deleted successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# API endpoints for external use (with API key authentication)
+@app.get("/api/v1/jobs", response_model=List[JobResponse])
+async def get_jobs_api(
+    request: Request,
+    limit: int = 50,
+    offset: int = 0
+):
+    """Get jobs via API key authentication"""
+    user_data = get_current_api_user(request)
+    
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, name, description, sources, prompt, frequency_minutes, 
+                       threshold_score, is_active, notification_channel_ids,
+                       alert_cooldown_minutes, max_alerts_per_hour, created_at, updated_at
+                FROM jobs 
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+                LIMIT %s OFFSET %s
+                """,
+                (user_data['user_id'], limit, offset)
+            )
+            jobs = cur.fetchall()
+    
+    return jobs
+
+@app.post("/api/v1/jobs", response_model=JobResponse)
+async def create_job_api(
+    request: Request,
+    job_data: JobCreate
+):
+    """Create a new job via API key authentication"""
+    user_data = get_current_api_user(request)
+    
+    # Check if user can create job
+    can_create, error_msg = can_create_job(user_data['user_id'], job_data.frequency_minutes)
+    if not can_create:
+        raise HTTPException(status_code=403, detail=error_msg)
+    
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO jobs (user_id, name, description, sources, prompt, frequency_minutes, 
+                                threshold_score, notification_channel_ids, alert_cooldown_minutes, 
+                                max_alerts_per_hour)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id, created_at, updated_at
+                """,
+                (
+                    user_data['user_id'], job_data.name, job_data.description,
+                    json.dumps(job_data.sources), job_data.prompt, job_data.frequency_minutes,
+                    job_data.threshold_score, json.dumps(job_data.notification_channel_ids),
+                    job_data.alert_cooldown_minutes, job_data.max_alerts_per_hour
+                )
+            )
+            result = cur.fetchone()
+            conn.commit()
+    
+    # Return the created job
+    return {
+        'id': result['id'],
+        'name': job_data.name,
+        'description': job_data.description,
+        'sources': job_data.sources,
+        'prompt': job_data.prompt,
+        'frequency_minutes': job_data.frequency_minutes,
+        'threshold_score': job_data.threshold_score,
+        'is_active': True,
+        'notification_channel_ids': job_data.notification_channel_ids,
+        'alert_cooldown_minutes': job_data.alert_cooldown_minutes,
+        'max_alerts_per_hour': job_data.max_alerts_per_hour,
+        'created_at': result['created_at'],
+        'updated_at': result['updated_at']
+    }
+
+@app.get("/api/v1/jobs/{job_id}", response_model=JobResponse)
+async def get_job_api(
+    request: Request,
+    job_id: str
+):
+    """Get a specific job via API key authentication"""
+    user_data = get_current_api_user(request)
+    
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, name, description, sources, prompt, frequency_minutes, 
+                       threshold_score, is_active, notification_channel_ids,
+                       alert_cooldown_minutes, max_alerts_per_hour, created_at, updated_at
+                FROM jobs 
+                WHERE id = %s AND user_id = %s
+                """,
+                (job_id, user_data['user_id'])
+            )
+            job = cur.fetchone()
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    return job
+
+@app.put("/api/v1/jobs/{job_id}", response_model=JobResponse)
+async def update_job_api(
+    request: Request,
+    job_id: str,
+    job_data: JobCreate
+):
+    """Update a job via API key authentication"""
+    user_data = get_current_api_user(request)
+    
+    # Check if user can create job with this frequency
+    can_create, error_msg = can_create_job(user_data['user_id'], job_data.frequency_minutes)
+    if not can_create:
+        raise HTTPException(status_code=403, detail=error_msg)
+    
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE jobs 
+                SET name = %s, description = %s, sources = %s, prompt = %s, 
+                    frequency_minutes = %s, threshold_score = %s, 
+                    notification_channel_ids = %s, alert_cooldown_minutes = %s, 
+                    max_alerts_per_hour = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s AND user_id = %s
+                RETURNING id, created_at, updated_at
+                """,
+                (
+                    job_data.name, job_data.description, json.dumps(job_data.sources),
+                    job_data.prompt, job_data.frequency_minutes, job_data.threshold_score,
+                    json.dumps(job_data.notification_channel_ids), job_data.alert_cooldown_minutes,
+                    job_data.max_alerts_per_hour, job_id, user_data['user_id']
+                )
+            )
+            result = cur.fetchone()
+            
+            if cur.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Job not found")
+            
+            conn.commit()
+    
+    return {
+        'id': result['id'],
+        'name': job_data.name,
+        'description': job_data.description,
+        'sources': job_data.sources,
+        'prompt': job_data.prompt,
+        'frequency_minutes': job_data.frequency_minutes,
+        'threshold_score': job_data.threshold_score,
+        'is_active': True,
+        'notification_channel_ids': job_data.notification_channel_ids,
+        'alert_cooldown_minutes': job_data.alert_cooldown_minutes,
+        'max_alerts_per_hour': job_data.max_alerts_per_hour,
+        'created_at': result['created_at'],
+        'updated_at': result['updated_at']
+    }
+
+@app.delete("/api/v1/jobs/{job_id}")
+async def delete_job_api(
+    request: Request,
+    job_id: str
+):
+    """Delete a job via API key authentication"""
+    user_data = get_current_api_user(request)
+    
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM jobs WHERE id = %s AND user_id = %s",
+                (job_id, user_data['user_id'])
+            )
+            
+            if cur.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Job not found")
+            
+            conn.commit()
+    
+    return {"message": "Job deleted successfully"}
+
+@app.get("/api/v1/jobs/{job_id}/runs")
+async def get_job_runs_api(
+    request: Request,
+    job_id: str,
+    limit: int = 50,
+    offset: int = 0
+):
+    """Get job runs via API key authentication"""
+    user_data = get_current_api_user(request)
+    
+    # First verify the job belongs to the user
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM jobs WHERE id = %s AND user_id = %s",
+                (job_id, user_data['user_id'])
+            )
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Job not found")
+            
+            # Get job runs
+            cur.execute(
+                """
+                SELECT id, started_at, completed_at, status, sources_processed,
+                       alerts_generated, error_message, analysis_summary
+                FROM job_runs
+                WHERE job_id = %s
+                ORDER BY started_at DESC
+                LIMIT %s OFFSET %s
+                """,
+                (job_id, limit, offset)
+            )
+            runs = cur.fetchall()
+    
+    return runs
+
+@app.get("/api/v1/jobs/{job_id}/alerts")
+async def get_job_alerts_api(
+    request: Request,
+    job_id: str,
+    limit: int = 50,
+    offset: int = 0
+):
+    """Get job alerts via API key authentication"""
+    user_data = get_current_api_user(request)
+    
+    # First verify the job belongs to the user
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM jobs WHERE id = %s AND user_id = %s",
+                (job_id, user_data['user_id'])
+            )
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Job not found")
+            
+            # Get job alerts
+            cur.execute(
+                """
+                SELECT a.id, a.title, a.content, a.source_url, a.relevance_score,
+                       a.is_sent, a.is_read, a.is_acknowledged, a.created_at,
+                       j.name as job_name
+                FROM alerts a
+                JOIN jobs j ON a.job_id = j.id
+                WHERE a.job_id = %s
+                ORDER BY a.created_at DESC
+                LIMIT %s OFFSET %s
+                """,
+                (job_id, limit, offset)
+            )
+            alerts = cur.fetchall()
+    
+    return alerts
+
+@app.post("/api/v1/jobs/{job_id}/run")
+async def run_job_now_api(
+    request: Request,
+    job_id: str
+):
+    """Trigger immediate job run via API key authentication"""
+    user_data = get_current_api_user(request)
+    
+    # First verify the job belongs to the user
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM jobs WHERE id = %s AND user_id = %s AND is_active = true",
+                (job_id, user_data['user_id'])
+            )
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Job not found or inactive")
+    
+    # Add job to Redis queue for immediate processing
+    try:
+        job_data = {
+            'job_id': job_id,
+            'priority': 'high',
+            'triggered_by': 'api'
+        }
+        redis_client.lpush('job_queue', json.dumps(job_data))
+        return {"message": "Job queued for immediate execution"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to queue job: {str(e)}")
+
+@app.get("/api/v1/alerts")
+async def get_alerts_api(
+    request: Request,
+    limit: int = 50,
+    offset: int = 0,
+    unacknowledged_only: bool = False
+):
+    """Get alerts via API key authentication"""
+    user_data = get_current_api_user(request)
+    
+    where_clause = "j.user_id = %s"
+    params = [user_data['user_id']]
+    
+    if unacknowledged_only:
+        where_clause += " AND a.is_acknowledged = false"
+    
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT a.id, a.title, a.content, a.source_url, a.relevance_score,
+                       a.is_sent, a.is_read, a.is_acknowledged, a.created_at,
+                       j.name as job_name, j.id as job_id
+                FROM alerts a
+                JOIN jobs j ON a.job_id = j.id
+                WHERE {where_clause}
+                ORDER BY a.created_at DESC
+                LIMIT %s OFFSET %s
+                """,
+                params + [limit, offset]
+            )
+            alerts = cur.fetchall()
+    
+    return alerts
 @app.get("/internal/jobs/active")
 async def get_active_jobs_internal(request: Request):
     """Internal endpoint for worker managers to get active jobs efficiently"""

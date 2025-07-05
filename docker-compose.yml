@@ -24,6 +24,20 @@ services:
     networks:
       - monitoring_net
 
+  # MongoDB for Raw Data Storage
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=monitoring_user
+      - MONGO_INITDB_ROOT_PASSWORD=monitoring_pass
+      - MONGO_INITDB_DATABASE=monitoring_raw_data
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - monitoring_net
+
   # Main API Service
   api_service:
     build: ./api_service
@@ -83,12 +97,14 @@ services:
       - REDIS_URL=redis://redis:6379
       - BROWSER_SERVICE_URL=http://browser_service:8001
       - LLM_SERVICE_URL=http://llm_service:8002
+      - DATA_STORAGE_URL=http://data_storage_service:8004
       - HOSTNAME=${HOSTNAME:-http://localhost:3000}
       - INTERNAL_API_KEY=${INTERNAL_API_KEY:-internal-service-key-change-in-production}
     depends_on:
       - postgres
       - redis
       - browser_service
+      - data_storage_service
     volumes:
       - ./worker_manager:/app
     networks:
@@ -135,6 +151,24 @@ services:
     networks:
       - monitoring_net
 
+  # Data Storage Service
+  data_storage_service:
+    build: ./data_storage_service
+    image: monitoring_data_storage_service
+    ports:
+      - "8004:8004"
+    environment:
+      - MONGODB_URL=mongodb://monitoring_user:monitoring_pass@mongodb:27017/monitoring_raw_data?authSource=admin
+      - REDIS_URL=redis://redis:6379
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-internal-service-key-change-in-production}
+    depends_on:
+      - mongodb
+      - redis
+    volumes:
+      - ./data_storage_service:/app
+    networks:
+      - monitoring_net
+
   # Frontend React App
   frontend:
     build: ./frontend
@@ -173,6 +207,7 @@ volumes:
   postgres_data:
   redis_data:
   browser_data:
+  mongodb_data:
 
 networks:
   monitoring_net:

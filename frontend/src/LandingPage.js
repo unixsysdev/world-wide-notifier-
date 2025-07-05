@@ -251,7 +251,7 @@ const LandingPage = ({ onShowLogin }) => {
               Start Monitoring Free
             </button>
             <p className="text-sm text-gray-600">
-              Free tier • 3 alerts daily • No credit card required
+              Free tier • 3 alerts hourly • No credit card required
             </p>
           </div>
         </section>
@@ -273,7 +273,7 @@ const LandingPage = ({ onShowLogin }) => {
                 </li>
                 <li className="flex items-center text-gray-700">
                   <span className="text-green-500 mr-3">✓</span>
-                  Daily check frequency
+                  Hourly check frequency
                 </li>
                 <li className="flex items-center text-gray-700">
                   <span className="text-green-500 mr-3">✓</span>
@@ -299,7 +299,7 @@ const LandingPage = ({ onShowLogin }) => {
               <ul className="space-y-2 mb-6">
                 <li className="flex items-center text-gray-700">
                   <span className="text-green-500 mr-3">✓</span>
-                  10 monitoring alerts maximum
+                  10 monitoring jobs maximum
                 </li>
                 <li className="flex items-center text-gray-700">
                   <span className="text-green-500 mr-3">✓</span>
@@ -336,7 +336,7 @@ const LandingPage = ({ onShowLogin }) => {
               <ul className="space-y-2 mb-6">
                 <li className="flex items-center text-white">
                   <span className="text-yellow-300 mr-3">✓</span>
-                  Unlimited monitoring alerts
+                  Unlimited monitoring jobs
                 </li>
                 <li className="flex items-center text-white">
                   <span className="text-yellow-300 mr-3">✓</span>
