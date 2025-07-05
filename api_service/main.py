@@ -219,7 +219,9 @@ class JobResponse(BaseModel):
     frequency_minutes: int
     threshold_score: int
     is_active: bool
+    notification_channel_ids: List[str] = []
     created_at: str
+
 
 class AlertResponse(BaseModel):
     id: str
@@ -1011,10 +1013,12 @@ async def get_jobs(
             frequency_minutes=job['frequency_minutes'],
             threshold_score=job['threshold_score'],
             is_active=job['is_active'],
+            notification_channel_ids=job['notification_channel_ids'] or [],
             created_at=job['created_at'].isoformat()
         ))
     
     return jobs
+
 
 
 @app.get("/jobs/{job_id}")
@@ -2164,6 +2168,7 @@ async def get_jobs_api(
             frequency_minutes=job['frequency_minutes'],
             threshold_score=job['threshold_score'],
             is_active=job['is_active'],
+            notification_channel_ids=job['notification_channel_ids'] or [],
             created_at=job['created_at'].isoformat()
         ))
     
@@ -2213,6 +2218,7 @@ async def create_job_api(
         frequency_minutes=job_data.frequency_minutes,
         threshold_score=job_data.threshold_score,
         is_active=True,
+        notification_channel_ids=job_data.notification_channel_ids or [],
         created_at=result['created_at'].isoformat()
     )
 
@@ -2251,6 +2257,7 @@ async def get_job_api(
         frequency_minutes=job['frequency_minutes'],
         threshold_score=job['threshold_score'],
         is_active=job['is_active'],
+        notification_channel_ids=job['notification_channel_ids'] or [],
         created_at=job['created_at'].isoformat()
     )
 
@@ -2304,6 +2311,7 @@ async def update_job_api(
         frequency_minutes=job_data.frequency_minutes,
         threshold_score=job_data.threshold_score,
         is_active=True,
+        notification_channel_ids=job_data.notification_channel_ids or [],
         created_at=result['created_at'].isoformat()
     )
 
