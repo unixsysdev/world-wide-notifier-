@@ -625,6 +625,20 @@ Need help? Contact support or check your notification settings.
             logger.warning(f"Could not store processed alert: {e}")
         
         total_sent = sum(notifications_sent.values())
+        
+        # Update database to mark alert as sent if any notifications were sent
+        if total_sent > 0:
+            try:
+                with psycopg2.connect(self.database_url) as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE alerts SET is_sent = TRUE WHERE id = %s",
+                            (alert['id'],)
+                        )
+                        conn.commit()
+                        logger.info(f"✅ Updated alert {alert['id']} - marked as sent in database")
+            except Exception as e:
+                logger.error(f"Failed to update is_sent flag in database: {e}")
         logger.info(f"Alert processed - {total_sent} notifications sent: {notifications_sent}")
     
     def run_processor(self):
