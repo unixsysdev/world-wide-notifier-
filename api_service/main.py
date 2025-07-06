@@ -789,20 +789,26 @@ def acknowledge_alert(alert_id: str, user_id: str, token: str = None):
 async def root():
     return {"message": "AI Monitoring API is running"}
 
-@app.websocket("/ws/dashboard/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, user_id: str, token: str = None):
+@app.websocket("/api/ws/dashboard/{user_id}")
+async def websocket_endpoint(websocket: WebSocket, user_id: str):
     """WebSocket endpoint for real-time dashboard updates"""
+    # Get token from query parameters
+    token = websocket.query_params.get("token")
+    
+    if not token:
+        await websocket.close(code=1008, reason="No token provided")
+        return
+        
     # Verify user authentication via token
-    if token:
-        try:
-            payload = verify_token(token)
-            authenticated_user_id = payload.get("sub")
-            if authenticated_user_id != user_id:
-                await websocket.close(code=1008, reason="Invalid user")
-                return
-        except:
-            await websocket.close(code=1008, reason="Invalid token")
+    try:
+        payload = verify_token(token)
+        authenticated_user_id = payload.get("sub")
+        if authenticated_user_id != user_id:
+            await websocket.close(code=1008, reason="Invalid user")
             return
+    except Exception as e:
+        await websocket.close(code=1008, reason="Invalid token")
+        return
     
     await manager.connect(websocket, user_id)
     try:
