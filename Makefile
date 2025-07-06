@@ -1,8 +1,12 @@
-.PHONY: build up down logs clean generate-keys prod-setup health
+.PHONY: build build-no-cache up down logs clean generate-keys prod-setup health
 
 # Build all services
 build:
 	docker-compose build
+
+# Build all services with no cache (force rebuild)
+build-no-cache:
+	docker-compose build --no-cache
 
 # Start all services
 up:
