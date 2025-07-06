@@ -2300,6 +2300,17 @@ async def create_job_api(
                 )
             )
             result = cur.fetchone()
+            job_id = result['id']
+            
+            # Insert job notification settings
+            cur.execute(
+                """INSERT INTO job_notification_settings (job_id, notification_channel_ids, repeat_frequency_minutes, 
+                   max_repeats, require_acknowledgment)
+                   VALUES (%s, %s, %s, %s, %s)""",
+                (job_id, json.dumps(job_data.notification_channel_ids), job_data.repeat_frequency_minutes, 
+                 job_data.max_repeats, job_data.require_acknowledgment)
+            )
+            
             conn.commit()
     
     # Return the created job with proper datetime formatting
@@ -2313,6 +2324,11 @@ async def create_job_api(
         threshold_score=job_data.threshold_score,
         is_active=True,
         notification_channel_ids=job_data.notification_channel_ids or [],
+        alert_cooldown_minutes=job_data.alert_cooldown_minutes,
+        max_alerts_per_hour=job_data.max_alerts_per_hour,
+        repeat_frequency_minutes=job_data.repeat_frequency_minutes,
+        max_repeats=job_data.max_repeats,
+        require_acknowledgment=job_data.require_acknowledgment,
         created_at=result['created_at'].isoformat()
     )
 
