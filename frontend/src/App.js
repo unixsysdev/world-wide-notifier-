@@ -78,6 +78,13 @@ const MainApp = () => {
     }
   }, [isAuthenticated]);
 
+  // Refetch alerts when subscription data is loaded to apply proper limits
+  useEffect(() => {
+    if (isAuthenticated && userSubscription) {
+      fetchAlerts();
+    }
+  }, [userSubscription]);
+
   const fetchJobs = async () => {
     try {
       const response = await axios.get(`${API_URL}/jobs?limit=1000`);
@@ -91,7 +98,13 @@ const MainApp = () => {
 
   const fetchAlerts = async () => {
     try {
-      const response = await axios.get(`${API_URL}/alerts?limit=100`);
+      // Set alert limit based on user tier
+      let alertLimit = 100; // Default for free and premium
+      if (userSubscription?.tier === 'premium_plus') {
+        alertLimit = 10000; // Effectively unlimited for premium plus
+      }
+      
+      const response = await axios.get(`${API_URL}/alerts?limit=${alertLimit}`);
       setAlerts(response.data);
     } catch (error) {
       console.error('Error fetching alerts:', error);
