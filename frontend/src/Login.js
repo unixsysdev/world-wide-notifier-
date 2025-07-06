@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import LandingPage from './LandingPage';
 
-const Login = () => {
+const Login = ({ isDarkMode, toggleDarkMode }) => {
   const { login } = useAuth();
   const [showLogin, setShowLogin] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -30,7 +31,7 @@ const Login = () => {
   }, [showLogin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!showLogin) {
-    return <LandingPage onShowLogin={() => setShowLogin(true)} />;
+    return <LandingPage onShowLogin={() => setShowLogin(true)} isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />;
   }
 
   const handleGoogleSignInClick = () => {

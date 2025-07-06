@@ -479,7 +479,7 @@ const MainApp = () => {
   }
 
   if (!isAuthenticated) {
-    return <Login />;
+    return <Login isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />;
   }
 
   if (currentView === 'settings') {
