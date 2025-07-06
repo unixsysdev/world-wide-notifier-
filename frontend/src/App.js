@@ -47,13 +47,17 @@ const MainApp = () => {
   const [selectedJobFilter, setSelectedJobFilter] = useState(null);
   const [jobSearchQuery, setJobSearchQuery] = useState('');
 
-  // Dark mode state (defaulting to light mode)
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  // Dark mode state (with localStorage persistence)
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const saved = localStorage.getItem('darkMode');
+    return saved ? JSON.parse(saved) : false;
+  });
 
   // Toggle dark mode
   const toggleDarkMode = () => {
     const newMode = !isDarkMode;
     setIsDarkMode(newMode);
+    localStorage.setItem('darkMode', JSON.stringify(newMode));
     document.documentElement.classList.toggle('dark', newMode);
   };
 
@@ -468,7 +472,7 @@ const MainApp = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center transition-colors">
         <div className="text-xl">Loading...</div>
       </div>
     );
@@ -518,9 +522,9 @@ const MainApp = () => {
 
   if (currentView === 'alerts') {
     return (
-      <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
         {/* Navigation Header */}
-        <nav className="bg-white dark:bg-gray-800 shadow-sm">
+        <nav className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
           <div className="container mx-auto px-4">
             <div className="flex justify-between items-center h-16">
               <div className="flex items-center space-x-8">
@@ -533,8 +537,8 @@ const MainApp = () => {
                     }}
                     className={`px-3 py-2 rounded-md text-sm font-medium ${
                       currentView === 'dashboard' 
-                        ? 'bg-blue-100 text-blue-700' 
-                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white'
+                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200' 
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white transition-colors'
                     }`}
                   >
                     Dashboard
@@ -543,8 +547,8 @@ const MainApp = () => {
                     onClick={() => handleViewChange('alerts')}
                     className={`px-3 py-2 rounded-md text-sm font-medium ${
                       currentView === 'alerts' 
-                        ? 'bg-blue-100 text-blue-700' 
-                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white'
+                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200' 
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white transition-colors'
                     }`}
                   >
                     Alerts
@@ -558,8 +562,8 @@ const MainApp = () => {
                     onClick={() => handleViewChange('settings')}
                     className={`px-3 py-2 rounded-md text-sm font-medium ${
                       currentView === 'settings' 
-                        ? 'bg-blue-100 text-blue-700' 
-                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white'
+                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200' 
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white transition-colors'
                     }`}
                   >
                     Settings
@@ -568,8 +572,8 @@ const MainApp = () => {
                     onClick={() => handleViewChange('api')}
                     className={`px-3 py-2 rounded-md text-sm font-medium ${
                       currentView === 'api' 
-                        ? 'bg-blue-100 text-blue-700' 
-                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white'
+                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200' 
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white transition-colors'
                     }`}
                   >
                     API
@@ -577,10 +581,10 @@ const MainApp = () => {
                 </div>
               </div>
               <div className="flex items-center space-x-4">
-                <span className="text-sm text-gray-600 dark:text-gray-300">Welcome, {user?.name}</span>
+                <span className="text-sm text-gray-600 dark:text-gray-400 dark:text-gray-300">Welcome, {user?.name}</span>
                 <button
                   onClick={toggleDarkMode}
-                  className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 transition-colors"
+                  className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600 dark:bg-gray-700 dark:hover:bg-gray-600 transition-colors"
                   title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
                 >
                   {isDarkMode ? (
@@ -595,7 +599,7 @@ const MainApp = () => {
                 </button>
                 <button
                   onClick={logout}
-                  className="text-sm text-red-600 hover:text-red-800"
+                  className="text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 transition-colors"
                 >
                   Logout
                 </button>
@@ -607,10 +611,10 @@ const MainApp = () => {
         <div className="container mx-auto px-4 py-8">
           <div className="flex justify-between items-center mb-8">
             <div className="flex items-center space-x-4">
-              <h2 className="text-3xl font-bold text-gray-900">🚨 Alert Management</h2>
+              <h2 className="text-3xl font-bold text-gray-900 dark:text-white">🚨 Alert Management</h2>
               {selectedJob && (
                 <div className="flex items-center space-x-2">
-                  <span className="text-sm bg-blue-100 text-blue-800 px-3 py-1 rounded-full font-medium">
+                  <span className="text-sm bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 px-3 py-1 rounded-full font-medium">
                     Filtered by: {selectedJob.name}
                   </span>
                   <button
@@ -623,7 +627,7 @@ const MainApp = () => {
               )}
               {selectedAlerts.length > 0 && (
                 <div className="flex items-center space-x-2">
-                  <span className="text-sm text-gray-600">{selectedAlerts.length} selected</span>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">{selectedAlerts.length} selected</span>
                   <button
                     onClick={bulkAcknowledgeAlerts}
                     className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded-md text-sm font-medium"
@@ -652,11 +656,11 @@ const MainApp = () => {
                 </button>
               )}
               <div className="flex items-center space-x-4">
-                <div className="text-sm text-gray-600">
+                <div className="text-sm text-gray-600 dark:text-gray-400">
                   {filteredAlerts.length} {selectedJob ? `alerts from "${selectedJob.name}"` : 'total alerts'}
                 </div>
                 {userSubscription && (
-                  <div className="text-sm text-gray-600">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
                     <span className="font-medium capitalize">{userSubscription.tier}</span> Plan
                     {userSubscription.tier === 'free' && (
                       <span className="ml-2">({userSubscription.daily_alert_count}/{userSubscription.alert_limit} alerts today)</span>
@@ -675,10 +679,10 @@ const MainApp = () => {
             <div className="grid gap-6">
               {filteredAlerts.length === 0 ? (
                 <div className="text-center py-12">
-                  <h3 className="mt-2 text-sm font-medium text-gray-900">
+                  <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">
                     {selectedJob ? `No alerts for "${selectedJob.name}"` : 'No alerts yet'}
                   </h3>
-                  <p className="mt-1 text-sm text-gray-500">
+                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                     {selectedJob 
                       ? 'This job hasn\'t generated any alerts yet.'
                       : 'Alerts will appear here when your monitoring jobs detect relevant changes.'
@@ -689,7 +693,7 @@ const MainApp = () => {
                 filteredAlerts.map((alert) => (
                   <div 
                     key={alert.id} 
-                    className={`bg-white overflow-hidden shadow-lg rounded-xl border-l-4 transition-all hover:shadow-xl ${
+                    className={`bg-white dark:bg-gray-800 overflow-hidden shadow-lg rounded-xl border-l-4 transition-all hover:shadow-xl ${
                       alert.is_acknowledged 
                         ? 'border-green-400' 
                         : alert.relevance_score >= 80 
@@ -716,21 +720,21 @@ const MainApp = () => {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center space-x-3">
-                              <h3 className="text-xl font-bold text-gray-900 mb-2">
+                              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
                                 {alert.title}
                               </h3>
                               <div className="flex items-center space-x-3 mb-3">
                                 <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
                                   alert.relevance_score >= 80 
-                                    ? 'bg-red-100 text-red-800' 
+                                    ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' 
                                     : alert.relevance_score >= 60 
-                                      ? 'bg-yellow-100 text-yellow-800' 
-                                      : 'bg-blue-100 text-blue-800'
+                                      ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' 
+                                      : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
                                 }`}>
                                   🎯 Score: {alert.relevance_score}/100
                                 </span>
                                 {alert.is_acknowledged && (
-                                  <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                                  <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
                                     ✅ Acknowledged
                                   </span>
                                 )}
@@ -752,9 +756,9 @@ const MainApp = () => {
                             </div>
                           </div>
                           
-                          <div className="mt-4 p-4 bg-gray-50 rounded-lg border">
-                            <h4 className="text-sm font-semibold text-gray-800 mb-2">📄 Alert Summary</h4>
-                            <p className="text-sm text-gray-700 leading-relaxed">{alert.content}</p>
+                          <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg border dark:border-gray-600">
+                            <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">📄 Alert Summary</h4>
+                            <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{alert.content}</p>
                           </div>
                           
                           <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
@@ -800,16 +804,16 @@ const MainApp = () => {
 
   if (dataLoading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="text-xl">Loading jobs...</div>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center transition-colors">
+        <div className="text-xl text-gray-900 dark:text-white">Loading jobs...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
       {/* Navigation Header */}
-      <nav className="bg-white dark:bg-gray-800 shadow-sm">
+      <nav className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
         <div className="container mx-auto px-4">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-8">
@@ -819,8 +823,8 @@ const MainApp = () => {
                   onClick={() => handleViewChange('dashboard')}
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
                     currentView === 'dashboard' 
-                      ? 'bg-blue-100 text-blue-700' 
-                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white'
+                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200' 
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white transition-colors'
                   }`}
                 >
                   Dashboard
@@ -829,8 +833,8 @@ const MainApp = () => {
                   onClick={() => handleViewChange('alerts')}
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
                     currentView === 'alerts' 
-                      ? 'bg-blue-100 text-blue-700' 
-                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white'
+                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200' 
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white transition-colors'
                   }`}
                 >
                   Alerts
@@ -844,8 +848,8 @@ const MainApp = () => {
                   onClick={() => handleViewChange('settings')}
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
                     currentView === 'settings' 
-                      ? 'bg-blue-100 text-blue-700' 
-                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white'
+                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200' 
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white transition-colors'
                   }`}
                 >
                   Settings
@@ -854,8 +858,8 @@ const MainApp = () => {
                   onClick={() => handleViewChange('api')}
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
                     currentView === 'api' 
-                      ? 'bg-blue-100 text-blue-700' 
-                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white'
+                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200' 
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white transition-colors'
                   }`}
                 >
                   API
@@ -863,10 +867,10 @@ const MainApp = () => {
               </div>
             </div>
             <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-600 dark:text-gray-300">Welcome, {user?.name}</span>
+              <span className="text-sm text-gray-600 dark:text-gray-400 dark:text-gray-300">Welcome, {user?.name}</span>
               <button
                 onClick={toggleDarkMode}
-                className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 transition-colors"
+                className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600 dark:bg-gray-700 dark:hover:bg-gray-600 transition-colors"
                 title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
               >
                 {isDarkMode ? (
@@ -881,7 +885,7 @@ const MainApp = () => {
               </button>
               <button
                 onClick={logout}
-                className="text-sm text-red-600 hover:text-red-800"
+                className="text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 transition-colors"
               >
                 Logout
               </button>
@@ -893,9 +897,9 @@ const MainApp = () => {
       <div className="container mx-auto px-4 py-8">
         {/* Dashboard Overview Stats */}
         <div className="mb-12">
-          <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 rounded-3xl p-8 border border-blue-100 shadow-lg">
+          <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-800 dark:via-gray-800 dark:to-gray-800 rounded-3xl p-8 border border-blue-100 dark:border-gray-700 shadow-lg">
             <div className="flex items-center justify-between mb-6">
-              <h1 className="text-2xl font-bold text-gray-800 flex items-center">
+              <h1 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center">
                 <span className="mr-3 text-3xl">🚀</span>
                 <div>
                   <div>AI Monitoring Dashboard</div>
@@ -1010,7 +1014,7 @@ const MainApp = () => {
                 placeholder="Search jobs..."
                 value={jobSearchQuery}
                 onChange={(e) => setJobSearchQuery(e.target.value)}
-                className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm w-64"
+                className="pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white text-sm w-64"
               />
               {jobSearchQuery && (
                 <button
@@ -1033,7 +1037,7 @@ const MainApp = () => {
               </svg>
               <span>Refresh</span>
             </button>
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-gray-500 dark:text-gray-400">
               {filteredJobs.length} of {jobs.length} {jobs.length === 1 ? 'job' : 'jobs'} {jobSearchQuery ? 'found' : 'configured'}
             </div>
           </div>
@@ -1042,7 +1046,7 @@ const MainApp = () => {
         {/* Create Job Form */}
         {showCreateForm && (
           <div className="fixed inset-0 bg-black bg-opacity-60 overflow-y-auto h-full w-full z-50 backdrop-blur-sm">
-            <div className="relative top-10 mx-auto p-0 border-0 w-11/12 md:w-4/5 lg:w-3/4 xl:w-2/3 shadow-2xl rounded-2xl bg-white max-h-[90vh] overflow-y-auto">
+            <div className="relative top-10 mx-auto p-0 border-0 w-11/12 md:w-4/5 lg:w-3/4 xl:w-2/3 shadow-2xl rounded-2xl bg-white dark:bg-gray-800 max-h-[90vh] overflow-y-auto">
               <div className="mt-3">
                 <div className="flex justify-between items-center mb-6 bg-gradient-to-r from-blue-500 to-indigo-600 text-white p-6 rounded-t-2xl">
                   <h3 className="text-2xl font-bold text-white flex items-center">
@@ -1063,61 +1067,61 @@ const MainApp = () => {
                 <div className="p-6">
                 <form onSubmit={handleSubmit} className="space-y-8">
                   {/* Basic Information */}
-                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">
-                    <h4 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-700 dark:to-gray-700 rounded-xl p-6 border border-blue-100 dark:border-gray-600">
+                    <h4 className="text-lg font-bold text-gray-800 dark:text-white mb-4 flex items-center">
                       <span className="mr-2">📝</span> Basic Information
                     </h4>
                     <div className="space-y-4">
                       <div>
-                        <label className="block text-sm font-semibold text-gray-800 mb-1">Job Name *</label>
+                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Job Name *</label>
                         <input
                           type="text"
                           name="name"
                           value={formData.name}
                           onChange={handleInputChange}
                           required
-                          className="mt-1 block w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300"
+                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-800 mb-1">Description</label>
+                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Description</label>
                         <input
                           type="text"
                           name="description"
                           value={formData.description}
                           onChange={handleInputChange}
-                          className="mt-1 block w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300"
+                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
                         />
                       </div>
                     </div>
                   </div>
 
                   {/* Sources and Monitoring */}
-                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">
-                    <h4 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-700 dark:to-gray-700 rounded-xl p-6 border border-blue-100 dark:border-gray-600">
+                    <h4 className="text-lg font-bold text-gray-800 dark:text-white mb-4 flex items-center">
                       <span className="mr-2">🔍</span> Sources & Monitoring
                     </h4>
                     <div className="space-y-4">
                       <div>
-                        <label className="block text-sm font-semibold text-gray-800 mb-1">Sources (one per line) *</label>
+                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Sources (one per line) *</label>
                         <textarea
                           name="sources"
                           value={formData.sources}
                           onChange={handleInputChange}
                           required
-                          className="mt-1 block w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300"
+                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
                           rows="3"
                           placeholder="https://example.com/news&#10;https://another-site.com/feed"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-800 mb-1">Analysis Prompt *</label>
+                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Analysis Prompt *</label>
                         <textarea
                           name="prompt"
                           value={formData.prompt}
                           onChange={handleInputChange}
                           required
-                          className="mt-1 block w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300"
+                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
                           rows="3"
                           placeholder="Analyze this content for anything that could impact oil prices..."
                         />
@@ -1126,13 +1130,13 @@ const MainApp = () => {
                   </div>
 
                   {/* Frequency and Thresholds */}
-                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">
-                    <h4 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-700 dark:to-gray-700 rounded-xl p-6 border border-blue-100 dark:border-gray-600">
+                    <h4 className="text-lg font-bold text-gray-800 dark:text-white mb-4 flex items-center">
                       <span className="mr-2">⏱️</span> Frequency & Thresholds
                     </h4>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-semibold text-gray-800 mb-1">
+                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">
                           Check Frequency (minutes)
                           {userSubscription && (
                             <span className="text-xs text-gray-500 block">
@@ -1146,7 +1150,7 @@ const MainApp = () => {
                           value={formData.frequency_minutes}
                           onChange={handleInputChange}
                           min={userSubscription?.min_frequency_minutes || 5}
-                          className="mt-1 block w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300"
+                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
                         />
                         {userSubscription?.tier === 'free' && (
                           <p className="mt-1 text-xs text-gray-500">
@@ -1155,7 +1159,7 @@ const MainApp = () => {
                         )}
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-800 mb-1">Alert Threshold (0-100)</label>
+                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Alert Threshold (0-100)</label>
                         <input
                           type="number"
                           name="threshold_score"
@@ -1163,11 +1167,11 @@ const MainApp = () => {
                           onChange={handleInputChange}
                           min="0"
                           max="100"
-                          className="mt-1 block w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300"
+                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-800 mb-1">
+                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">
                           Alert Cooldown (minutes)
                           <span className="text-xs text-gray-500 block">
                             (prevent duplicates)
@@ -1180,11 +1184,11 @@ const MainApp = () => {
                           onChange={handleInputChange}
                           min="1"
                           max="1440"
-                          className="mt-1 block w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300"
+                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-800 mb-1">
+                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">
                           Max Alerts/Hour
                           <span className="text-xs text-gray-500 block">
                             (rate limiting)
@@ -1197,27 +1201,27 @@ const MainApp = () => {
                           onChange={handleInputChange}
                           min="1"
                           max="60"
-                          className="mt-1 block w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300"
+                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
                         />
                       </div>
                     </div>
                   </div>
 
                   {/* Enhanced Notification Settings */}
-                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">
-                    <h4 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-700 dark:to-gray-700 rounded-xl p-6 border border-blue-100 dark:border-gray-600">
+                    <h4 className="text-lg font-bold text-gray-800 dark:text-white mb-4 flex items-center">
                       <span className="mr-2">🔔</span> Notification Settings
                     </h4>
                     
                     {/* Notification Channel Selection */}
                     {channels.length > 0 ? (
                       <div className="mb-4">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                           Notification Channels
                         </label>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                           {channels.map((channel) => (
-                            <div key={channel.id} className="flex items-center p-2 border rounded-md">
+                            <div key={channel.id} className="flex items-center p-2 border dark:border-gray-600 rounded-md dark:bg-gray-700">
                               <input
                                 type="checkbox"
                                 id={`channel-${channel.id}`}
@@ -1225,9 +1229,9 @@ const MainApp = () => {
                                 onChange={() => handleChannelSelectionChange(channel.id)}
                                 className="mr-3"
                               />
-                              <label htmlFor={`channel-${channel.id}`} className="text-sm text-gray-700 flex-1">
+                              <label htmlFor={`channel-${channel.id}`} className="text-sm text-gray-700 dark:text-gray-200 flex-1">
                                 <span className="font-medium capitalize">{channel.channel_type}</span>
-                                <span className="text-gray-500 block text-xs">
+                                <span className="text-gray-500 dark:text-gray-400 block text-xs">
                                   {channel.config.email ? channel.config.email : 
                                    channel.config.webhook_url ? channel.config.webhook_url.substring(0, 40) + '...' : 
                                    'Not configured'}
@@ -1236,14 +1240,14 @@ const MainApp = () => {
                             </div>
                           ))}
                         </div>
-                        <p className="mt-2 text-xs text-gray-500">
+                        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                           Select which channels to send alerts to. You can configure channels in Settings.
                         </p>
                       </div>
                     ) : (
-                      <div className="text-center p-4 border border-dashed border-gray-300 rounded-md">
-                        <p className="text-sm text-gray-500">No notification channels configured</p>
-                        <p className="text-xs text-gray-400 mt-1">
+                      <div className="text-center p-4 border border-dashed border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700">
+                        <p className="text-sm text-gray-500 dark:text-gray-400">No notification channels configured</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
                           Go to Settings to set up email, Teams, or other notification channels
                         </p>
                       </div>
@@ -1252,7 +1256,7 @@ const MainApp = () => {
                     {/* Repeat Settings */}
                     <div className="grid grid-cols-2 gap-4 mt-4">
                       <div>
-                        <label className="block text-sm font-semibold text-gray-800 mb-1">
+                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">
                           Repeat Frequency (minutes)
                           <span className="text-xs text-gray-500 block">
                             (if not acknowledged)
@@ -1265,11 +1269,11 @@ const MainApp = () => {
                           onChange={handleInputChange}
                           min="5"
                           max="1440"
-                          className="mt-1 block w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300"
+                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-800 mb-1">
+                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">
                           Max Repeats
                           <span className="text-xs text-gray-500 block">
                             (before stopping)
@@ -1282,7 +1286,7 @@ const MainApp = () => {
                           onChange={handleInputChange}
                           min="0"
                           max="20"
-                          className="mt-1 block w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300"
+                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
                         />
                       </div>
                       <div className="flex items-center">
@@ -1293,7 +1297,7 @@ const MainApp = () => {
                           onChange={(e) => setFormData({...formData, require_acknowledgment: e.target.checked})}
                           className="mr-2"
                         />
-                        <label className="text-sm font-medium text-gray-700">
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
                           Require Acknowledgment
                           <span className="text-xs text-gray-500 block">
                             (enable repeat notifications)
@@ -1303,7 +1307,7 @@ const MainApp = () => {
                     </div>
                   </div>
 
-                  <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200 bg-gray-50 -mx-8 -mb-8 px-8 py-6 rounded-b-xl">
+                  <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 -mx-8 -mb-8 px-8 py-6 rounded-b-xl">
                     <button
                       type="button"
                       onClick={() => {
@@ -1324,7 +1328,7 @@ const MainApp = () => {
                         require_acknowledgment: true
                       });
                     }}
-                      className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-all duration-200 font-medium border border-gray-300"
+                      className="px-6 py-3 bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-500 transition-all duration-200 font-medium border border-gray-300 dark:border-gray-600"
                     >
                       Cancel
                     </button>
@@ -1348,7 +1352,7 @@ const MainApp = () => {
             const unacknowledgedAlerts = getJobUnacknowledgedAlerts(job.id);
             
             return (
-              <div key={job.id} className="bg-white overflow-hidden shadow-xl rounded-2xl border border-gray-200 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2">
+              <div key={job.id} className="bg-white dark:bg-gray-800 overflow-hidden shadow-xl rounded-2xl border border-gray-200 dark:border-gray-700 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2">
                 {/* Header with gradient */}
                 <div className="bg-gradient-to-br from-blue-500 via-purple-500 to-indigo-600 px-6 py-4">
                   <div className="flex items-center justify-between">
@@ -1415,8 +1419,8 @@ const MainApp = () => {
                   {jobAlerts.length > 0 && (
                     <div className="mb-4">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-semibold text-gray-700">Alert Status</span>
-                        <span className="text-xs text-gray-500">{jobAlerts.length} total</span>
+                        <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">Alert Status</span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400">{jobAlerts.length} total</span>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
                         <div 
@@ -1426,7 +1430,7 @@ const MainApp = () => {
                           }}
                         ></div>
                       </div>
-                      <div className="flex justify-between text-xs text-gray-500 mt-1">
+                      <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
                         <span>✅ {jobAlerts.length - unacknowledgedAlerts.length} Acknowledged</span>
                         <span>⚠️ {unacknowledgedAlerts.length} Pending</span>
                       </div>
@@ -1435,40 +1439,40 @@ const MainApp = () => {
                   
                   {/* Recent Alerts Preview */}
                   {jobAlerts.length > 0 && (
-                    <div className="mt-6 border-t pt-4">
-                      <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+                    <div className="mt-6 border-t dark:border-gray-600 pt-4">
+                      <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center">
                         <span className="mr-2">🚨</span> Recent Alerts ({jobAlerts.length})
                       </h4>
                       <div className="space-y-3 max-h-48 overflow-y-auto pr-2 custom-scrollbar" style={{scrollbarWidth: 'thin', scrollbarColor: '#CBD5E0 #F7FAFC'}}>
                         {jobAlerts.slice(0, 5).map((alert) => (
                           <div key={alert.id} className={`p-3 rounded-lg border-l-4 transition-all hover:shadow-sm ${
                             alert.is_acknowledged 
-                              ? 'bg-green-50 border-green-400' 
+                              ? 'bg-green-50 dark:bg-green-900 border-green-400 dark:border-green-600' 
                               : alert.relevance_score >= 80 
-                                ? 'bg-red-50 border-red-400' 
+                                ? 'bg-red-50 dark:bg-red-900 border-red-400 dark:border-red-600' 
                                 : alert.relevance_score >= 60 
-                                  ? 'bg-yellow-50 border-yellow-400' 
-                                  : 'bg-blue-50 border-blue-400'
+                                  ? 'bg-yellow-50 dark:bg-yellow-900 border-yellow-400 dark:border-yellow-600' 
+                                  : 'bg-blue-50 dark:bg-blue-900 border-blue-400 dark:border-blue-600'
                           }`}>
                             <div className="flex justify-between items-start space-x-3">
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center space-x-2 mb-1">
-                                  <h5 className="font-medium text-gray-900 text-sm truncate">{alert.title}</h5>
+                                  <h5 className="font-medium text-gray-900 dark:text-white text-sm truncate">{alert.title}</h5>
                                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                                     alert.relevance_score >= 80 
-                                      ? 'bg-red-100 text-red-800' 
+                                      ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' 
                                       : alert.relevance_score >= 60 
-                                        ? 'bg-yellow-100 text-yellow-800' 
-                                        : 'bg-blue-100 text-blue-800'
+                                        ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' 
+                                        : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
                                   }`}>
                                     {alert.relevance_score}
                                   </span>
                                 </div>
-                                <p className="text-gray-600 text-xs leading-relaxed line-clamp-2">
+                                <p className="text-gray-600 dark:text-gray-300 text-xs leading-relaxed line-clamp-2">
                                   {alert.content.length > 120 ? alert.content.substring(0, 120) + '...' : alert.content}
                                 </p>
                                 <div className="flex items-center justify-between mt-2">
-                                  <span className="text-gray-400 text-xs">
+                                  <span className="text-gray-400 dark:text-gray-500 text-xs">
                                     {new Date(alert.created_at).toLocaleDateString()} {new Date(alert.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                                   </span>
                                   {alert.is_acknowledged && (
@@ -1518,8 +1522,8 @@ const MainApp = () => {
                       onClick={() => pauseResumeJob(job.id, job.is_active)}
                       className={`inline-flex items-center justify-center px-2 py-2 rounded-lg transition-colors text-xs font-medium ${
                         job.is_active 
-                          ? "bg-yellow-100 text-yellow-700 hover:bg-yellow-200" 
-                          : "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                          ? "bg-yellow-100 text-yellow-700 hover:bg-yellow-200 dark:hover:bg-yellow-800" 
+                          : "bg-blue-100 text-blue-700 hover:bg-blue-200 dark:hover:bg-blue-800"
                       }`}
                     >
                       <span className="mr-1">{job.is_active ? "⏸️" : "▶️"}</span> 
@@ -1533,33 +1537,33 @@ const MainApp = () => {
                     </button>
                     <button
                       onClick={() => viewLastRun(job.id)}
-                      className="inline-flex items-center justify-center px-2 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-xs font-medium"
+                      className="inline-flex items-center justify-center px-2 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-xs font-medium"
                     >
                       <span className="mr-1">📈</span> Last Run
                     </button>
                   </div>
                   {/* Action Buttons */}
-                  <div className="flex justify-between items-center pt-4 border-t border-gray-100">
+                  <div className="flex justify-between items-center pt-4 border-t border-gray-100 dark:border-gray-600">
                     <div className="flex space-x-2">
                       <button
                         onClick={() => {
                           setSelectedJobFilter(job.id);
                           handleViewChange('alerts');
                         }}
-                        className="inline-flex items-center px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium"
+                        className="inline-flex items-center px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors text-sm font-medium"
                       >
                         <span className="mr-1">👁️</span> View Alerts
                       </button>
                       <button
                         onClick={() => editJob(job)}
-                        className="inline-flex items-center px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+                        className="inline-flex items-center px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm font-medium"
                       >
                         <span className="mr-1">✏️</span> Edit
                       </button>
                     </div>
                     <button
                       onClick={() => deleteJob(job.id)}
-                      className="inline-flex items-center px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm font-medium"
+                      className="inline-flex items-center px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 dark:hover:bg-red-800 transition-colors text-sm font-medium"
                     >
                       <span className="mr-1">🗑️</span> Delete
                     </button>
@@ -1572,10 +1576,10 @@ const MainApp = () => {
 
         {filteredJobs.length === 0 && jobs.length === 0 && (
           <div className="text-center py-20">
-            <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-3xl p-12 border-2 border-dashed border-gray-300">
+            <div className="bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-700 dark:to-gray-700 rounded-3xl p-12 border-2 border-dashed border-gray-300 dark:border-gray-600">
               <div className="text-8xl mb-6">🎯</div>
-              <h3 className="text-2xl font-bold text-gray-900 mb-4">No Monitoring Jobs Yet</h3>
-              <p className="text-lg text-gray-600 mb-8 max-w-md mx-auto">
+              <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">No Monitoring Jobs Yet</h3>
+              <p className="text-lg text-gray-600 dark:text-gray-400 mb-8 max-w-md mx-auto">
                 Start monitoring your important sources by creating your first job. It only takes a minute!
               </p>
               <button
@@ -1591,10 +1595,10 @@ const MainApp = () => {
 
         {filteredJobs.length === 0 && jobs.length > 0 && (
           <div className="text-center py-20">
-            <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-3xl p-12 border-2 border-dashed border-gray-300">
+            <div className="bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-700 dark:to-gray-700 rounded-3xl p-12 border-2 border-dashed border-gray-300 dark:border-gray-600">
               <div className="text-8xl mb-6">🔍</div>
-              <h3 className="text-2xl font-bold text-gray-900 mb-4">No Jobs Found</h3>
-              <p className="text-lg text-gray-600 mb-8 max-w-md mx-auto">
+              <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">No Jobs Found</h3>
+              <p className="text-lg text-gray-600 dark:text-gray-400 mb-8 max-w-md mx-auto">
                 No jobs match your search for "{jobSearchQuery}". Try a different search term.
               </p>
               <button
@@ -1612,26 +1616,26 @@ const MainApp = () => {
       {/* Plan Selection Modal */}
       {showPlanModal && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full">
-          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-1/2 shadow-lg rounded-md bg-white">
+          <div className="relative top-20 mx-auto p-5 border dark:border-gray-600 w-11/12 md:w-1/2 shadow-lg rounded-md bg-white dark:bg-gray-800">
             <div className="mt-3">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Choose Your Plan</h3>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Choose Your Plan</h3>
               
               <div className="space-y-4">
                 {/* Premium Plan */}
-                <div className="border rounded-lg p-4 hover:border-blue-500 transition-colors">
+                <div className="border dark:border-gray-600 rounded-lg p-4 hover:border-blue-500 dark:hover:border-blue-400 transition-colors">
                   <div className="flex justify-between items-center">
                     <div>
-                      <h4 className="font-semibold text-gray-900">Premium</h4>
-                      <p className="text-sm text-gray-600">Perfect for regular monitoring</p>
-                      <ul className="mt-2 text-sm text-gray-500">
+                      <h4 className="font-semibold text-gray-900 dark:text-white">Premium</h4>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Perfect for regular monitoring</p>
+                      <ul className="mt-2 text-sm text-gray-500 dark:text-gray-400">
                         <li>• 100 alerts per day</li>
                         <li>• 10 minute minimum frequency</li>
                         <li>• All notification channels</li>
                       </ul>
                     </div>
                     <div className="text-right">
-                      <div className="text-2xl font-bold text-gray-900">$10</div>
-                      <div className="text-sm text-gray-500">per month</div>
+                      <div className="text-2xl font-bold text-gray-900 dark:text-white">$10</div>
+                      <div className="text-sm text-gray-500 dark:text-gray-400">per month</div>
                       <button
                         onClick={() => {
                           setShowPlanModal(false);
@@ -1646,15 +1650,15 @@ const MainApp = () => {
                 </div>
 
                 {/* Premium Plus Plan */}
-                <div className="border rounded-lg p-4 hover:border-purple-500 transition-colors border-purple-300 bg-purple-50">
+                <div className="border dark:border-gray-600 rounded-lg p-4 hover:border-purple-500 dark:hover:border-purple-400 transition-colors border-purple-300 bg-purple-50 dark:bg-purple-900">
                   <div className="flex justify-between items-center">
                     <div>
                       <div className="flex items-center">
-                        <h4 className="font-semibold text-gray-900">Premium Plus</h4>
+                        <h4 className="font-semibold text-gray-900 dark:text-white">Premium Plus</h4>
                         <span className="ml-2 bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full">BEST VALUE</span>
                       </div>
-                      <p className="text-sm text-gray-600">For power users and teams</p>
-                      <ul className="mt-2 text-sm text-gray-500">
+                      <p className="text-sm text-gray-600 dark:text-gray-400">For power users and teams</p>
+                      <ul className="mt-2 text-sm text-gray-500 dark:text-gray-400">
                         <li>• Unlimited alerts</li>
                         <li>• 1 minute minimum frequency</li>
                         <li>• Priority support</li>
@@ -1662,8 +1666,8 @@ const MainApp = () => {
                       </ul>
                     </div>
                     <div className="text-right">
-                      <div className="text-2xl font-bold text-gray-900">$15</div>
-                      <div className="text-sm text-gray-500">per month</div>
+                      <div className="text-2xl font-bold text-gray-900 dark:text-white">$15</div>
+                      <div className="text-sm text-gray-500 dark:text-gray-400">per month</div>
                       <button
                         onClick={() => {
                           setShowPlanModal(false);
@@ -1681,7 +1685,7 @@ const MainApp = () => {
               <div className="flex justify-end space-x-4 pt-4 mt-6 border-t">
                 <button
                   onClick={() => setShowPlanModal(false)}
-                  className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
+                  className="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-md hover:bg-gray-400 dark:hover:bg-gray-500"
                 >
                   Cancel
                 </button>

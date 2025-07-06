@@ -78,9 +78,9 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
       {/* Navigation Header */}
-      <nav className="bg-white dark:bg-gray-800 shadow-sm">
+      <nav className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
         <div className="container mx-auto px-4">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-8">
@@ -152,7 +152,7 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
               </button>
               <button
                 onClick={logout}
-                className="text-sm text-red-600 hover:text-red-800"
+                className="text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 transition-colors"
               >
                 Logout
               </button>
@@ -225,7 +225,7 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
           </div>
           
           {apiKeys.length === 0 ? (
-            <div className="text-center py-12">
+            <div className="text-center py-12 dark:text-white">
               <div className="text-6xl mb-4">🔑</div>
               <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">No API Keys Yet</h3>
               <p className="text-gray-600 dark:text-gray-400 mb-6">Create your first API key to start using the AI Monitoring API</p>
@@ -306,7 +306,7 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
               <div>
                 <h4 className="text-md font-semibold text-gray-900 dark:text-white mb-2">Available Endpoints</h4>
                 <div className="space-y-3">
-                  <div className="border border-gray-200 rounded-lg p-4">
+                  <div className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 dark:bg-gray-700">
                     <div className="flex items-center space-x-2 mb-2">
                       <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-mono">GET</span>
                       <code className="text-sm font-mono">/jobs</code>
@@ -333,7 +333,7 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
                     </details>
                   </div>
                   
-                  <div className="border border-gray-200 rounded-lg p-4">
+                  <div className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 dark:bg-gray-700">
                     <div className="flex items-center space-x-2 mb-2">
                       <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded font-mono">POST</span>
                       <code className="text-sm font-mono">/jobs</code>
@@ -357,7 +357,7 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
                     </details>
                   </div>
                   
-                  <div className="border border-gray-200 rounded-lg p-4">
+                  <div className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 dark:bg-gray-700">
                     <div className="flex items-center space-x-2 mb-2">
                       <span className="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded font-mono">PUT</span>
                       <code className="text-sm font-mono">/jobs/{"{job_id}"}</code>
@@ -365,7 +365,7 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
                     <p className="text-sm text-gray-600">Update a monitoring job</p>
                   </div>
                   
-                  <div className="border border-gray-200 rounded-lg p-4">
+                  <div className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 dark:bg-gray-700">
                     <div className="flex items-center space-x-2 mb-2">
                       <span className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded font-mono">DELETE</span>
                       <code className="text-sm font-mono">/jobs/{"{job_id}"}</code>
@@ -373,7 +373,7 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
                     <p className="text-sm text-gray-600">Delete a monitoring job</p>
                   </div>
                   
-                  <div className="border border-gray-200 rounded-lg p-4">
+                  <div className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 dark:bg-gray-700">
                     <div className="flex items-center space-x-2 mb-2">
                       <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-mono">GET</span>
                       <code className="text-sm font-mono">/jobs/{"{job_id}"}/runs</code>
@@ -402,7 +402,7 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
                     </details>
                   </div>
                   
-                  <div className="border border-gray-200 rounded-lg p-4">
+                  <div className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 dark:bg-gray-700">
                     <div className="flex items-center space-x-2 mb-2">
                       <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-mono">GET</span>
                       <code className="text-sm font-mono">/jobs/{"{job_id}"}/alerts</code>
@@ -432,7 +432,7 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
                     </details>
                   </div>
                   
-                  <div className="border border-gray-200 rounded-lg p-4">
+                  <div className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 dark:bg-gray-700">
                     <div className="flex items-center space-x-2 mb-2">
                       <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded font-mono">POST</span>
                       <code className="text-sm font-mono">/jobs/{"{job_id}"}/run</code>
@@ -440,7 +440,7 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
                     <p className="text-sm text-gray-600">Trigger immediate job execution</p>
                   </div>
                   
-                  <div className="border border-gray-200 rounded-lg p-4">
+                  <div className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 dark:bg-gray-700">
                     <div className="flex items-center space-x-2 mb-2">
                       <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-mono">GET</span>
                       <code className="text-sm font-mono">/jobs/{"{job_id}"}/historical-data</code>
@@ -488,7 +488,7 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
                     </details>
                   </div>
                   
-                  <div className="border border-gray-200 rounded-lg p-4">
+                  <div className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 dark:bg-gray-700">
                     <div className="flex items-center space-x-2 mb-2">
                       <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-mono">GET</span>
                       <code className="text-sm font-mono">/alerts</code>
@@ -519,7 +519,7 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
                   </div>
                 </div>
                 
-                <div className="border border-gray-200 rounded-lg p-4">
+                <div className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 dark:bg-gray-700">
                   <div className="flex items-center space-x-2 mb-2">
                     <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-mono">GET</span>
                     <code className="text-sm font-mono">/user/profile</code>
@@ -564,11 +564,11 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
               
               <div>
                 <h4 className="text-md font-semibold text-gray-900 mb-2">Rate Limits</h4>
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                  <p className="text-sm text-yellow-800">
+                <div className="bg-yellow-50 dark:bg-yellow-900 border border-yellow-200 dark:border-yellow-700 rounded-lg p-4">
+                  <p className="text-sm text-yellow-800 dark:text-yellow-200">
                     <strong>Your current rate limit:</strong> {userSubscription?.tier === 'free' ? '60' : userSubscription?.tier === 'premium' ? '120' : '300'} requests per minute
                   </p>
-                  <p className="text-sm text-yellow-700 mt-1">
+                  <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
                     Rate limits are enforced per API key and reset every minute.
                   </p>
                 </div>
@@ -576,7 +576,7 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
               
               <div>
                 <h4 className="text-md font-semibold text-gray-900 mb-2">Example Usage</h4>
-                <div className="bg-gray-900 text-green-400 rounded-lg p-4 text-sm font-mono overflow-x-auto">
+                <div className="bg-gray-900 text-green-400 rounded-lg p-4 text-sm font-mono overflow-x-auto border dark:border-gray-600">
                   <div className="mb-2"># Get all jobs</div>
                   <div className="mb-4">curl -H "Authorization: Bearer your_api_key" {API_URL}/v1/jobs</div>
                   
@@ -598,7 +598,7 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
       {/* Create API Key Modal */}
       {showCreateApiKey && (
         <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800 dark:border-gray-700">
+          <div className="relative top-20 mx-auto p-5 border dark:border-gray-600 w-96 shadow-lg rounded-md bg-white dark:bg-gray-800">
             <div className="mt-3">
               <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Create New API Key</h3>
               <form onSubmit={createApiKey}>
@@ -643,7 +643,7 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
                       setShowCreateApiKey(false);
                       setApiKeyForm({ name: '', rate_limit_per_minute: '' });
                     }}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+                    className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-600 rounded-md hover:bg-gray-200 dark:hover:bg-gray-500"
                   >
                     Cancel
                   </button>
@@ -663,7 +663,7 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
       {/* API Key Success Modal */}
       {createdApiKey && (
         <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800 dark:border-gray-700">
+          <div className="relative top-20 mx-auto p-5 border dark:border-gray-600 w-96 shadow-lg rounded-md bg-white dark:bg-gray-800">
             <div className="mt-3">
               <div className="flex items-center justify-center w-12 h-12 mx-auto bg-green-100 dark:bg-green-800 rounded-full mb-4">
                 <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -693,7 +693,7 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
                   </button>
                 </div>
                 
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <div className="bg-yellow-50 dark:bg-yellow-900 border border-yellow-200 dark:border-yellow-700 rounded-lg p-4">
                   <div className="flex">
                     <div className="flex-shrink-0">
                       <svg className="h-5 w-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
@@ -702,7 +702,7 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
                     </div>
                     <div className="ml-3">
                       <h3 className="text-sm font-medium text-yellow-800">Important!</h3>
-                      <p className="text-sm text-yellow-700 mt-1">
+                      <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
                         Save this API key now - you won't be able to see it again! Store it securely.
                       </p>
                     </div>

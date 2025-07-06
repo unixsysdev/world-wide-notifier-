@@ -160,12 +160,12 @@ const Settings = ({ user, logout, userSubscription, setCurrentView, currentView,
       case 'email':
         return (
           <div>
-            <label className="block text-sm font-medium text-gray-700">Email Address</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Email Address</label>
             <input
               type="email"
               value={newChannel.config.email || ''}
               onChange={(e) => updateConfig('email', e.target.value)}
-              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+              className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-white"
               placeholder="notifications@company.com"
             />
           </div>
@@ -173,12 +173,12 @@ const Settings = ({ user, logout, userSubscription, setCurrentView, currentView,
       case 'teams':
         return (
           <div>
-            <label className="block text-sm font-medium text-gray-700">Teams Webhook URL</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Teams Webhook URL</label>
             <input
               type="url"
               value={newChannel.config.webhook_url || ''}
               onChange={(e) => updateConfig('webhook_url', e.target.value)}
-              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+              className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-white"
               placeholder="https://your-org.webhook.office.com/..."
             />
           </div>
@@ -186,12 +186,12 @@ const Settings = ({ user, logout, userSubscription, setCurrentView, currentView,
       case 'slack':
         return (
           <div>
-            <label className="block text-sm font-medium text-gray-700">Slack Webhook URL</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Slack Webhook URL</label>
             <input
               type="url"
               value={newChannel.config.webhook_url || ''}
               onChange={(e) => updateConfig('webhook_url', e.target.value)}
-              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+              className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-white"
               placeholder="https://hooks.slack.com/services/..."
             />
           </div>
@@ -203,16 +203,16 @@ const Settings = ({ user, logout, userSubscription, setCurrentView, currentView,
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="text-xl">Loading settings...</div>
+      <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex items-center justify-center transition-colors">
+        <div className="text-xl text-gray-900 dark:text-white">Loading settings...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
       {/* Navigation Header */}
-      <nav className="bg-white dark:bg-gray-800 shadow-sm">
+      <nav className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
         <div className="container mx-auto px-4">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-8">
@@ -284,7 +284,7 @@ const Settings = ({ user, logout, userSubscription, setCurrentView, currentView,
               </button>
               <button
                 onClick={logout}
-                className="text-sm text-red-600 hover:text-red-800"
+                className="text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 transition-colors"
               >
                 Logout
               </button>
@@ -296,7 +296,7 @@ const Settings = ({ user, logout, userSubscription, setCurrentView, currentView,
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto">
           
-          <div className="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+          <div className="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg border dark:border-gray-700">
             <div className="px-4 py-5 sm:p-6">
               <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
                 Settings for {user?.name}
@@ -307,7 +307,7 @@ const Settings = ({ user, logout, userSubscription, setCurrentView, currentView,
                 <h4 className="text-md font-medium text-gray-900 dark:text-white mb-4">Subscription Management</h4>
                 
                 {userSubscription && (
-                  <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-6 mb-4 border border-blue-200">
+                  <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-gray-700 dark:to-gray-700 rounded-lg p-6 mb-4 border border-blue-200 dark:border-gray-600">
                     <div className="flex justify-between items-start mb-4">
                       <div>
                         <h5 className="text-lg font-semibold text-gray-900 dark:text-white capitalize flex items-center">
@@ -335,7 +335,7 @@ const Settings = ({ user, logout, userSubscription, setCurrentView, currentView,
                         )}
                       </div>
                       <div className="text-right">
-                        <div className="bg-white dark:bg-gray-700 rounded-lg p-3 shadow-sm">
+                        <div className="bg-white dark:bg-gray-700 rounded-lg p-3 shadow-sm border dark:border-gray-600">
                           <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Limits</p>
                           <p className="text-sm font-medium text-gray-900 dark:text-white">
                             {userSubscription.alert_limit === 999999 ? 'Unlimited' : userSubscription.alert_limit} alerts
@@ -438,8 +438,8 @@ const Settings = ({ user, logout, userSubscription, setCurrentView, currentView,
 
                 {/* Billing History */}
                 {billingHistory.length > 0 && (
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h5 className="font-medium text-gray-900 mb-3">Recent Billing History</h5>
+                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 border dark:border-gray-600">
+                    <h5 className="font-medium text-gray-900 dark:text-white mb-3">Recent Billing History</h5>
                     <div className="space-y-2">
                       {billingHistory.slice(0, 5).map((invoice) => (
                         <div key={invoice.id} className="flex justify-between items-center text-sm">
@@ -516,17 +516,17 @@ const Settings = ({ user, logout, userSubscription, setCurrentView, currentView,
       {/* Add Channel Modal */}
       {showAddForm && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full">
-          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-1/2 shadow-lg rounded-md bg-white">
+          <div className="relative top-20 mx-auto p-5 border dark:border-gray-600 w-11/12 md:w-1/2 shadow-lg rounded-md bg-white dark:bg-gray-800">
             <div className="mt-3">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Add Notification Channel</h3>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Add Notification Channel</h3>
               
               <form onSubmit={handleAddChannel} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Channel Type</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Channel Type</label>
                   <select
                     value={newChannel.channel_type}
                     onChange={(e) => handleChannelTypeChange(e.target.value)}
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                    className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-white"
                   >
                     <option value="email">Email</option>
                     <option value="teams">Microsoft Teams</option>
