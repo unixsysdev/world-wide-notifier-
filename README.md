@@ -2,9 +2,27 @@
 
 A distributed AI-powered web monitoring system that automatically tracks content changes across multiple websites and generates intelligent alerts based on custom criteria. Built with a microservices architecture for scalability and reliability.
 
+## 🚀 **Live Demo**
+**Try it now: [https://mon.duckerhub.com](https://mon.duckerhub.com)**
+
+✅ **Fully Operational Production System**
+- Real-time job processing and email notifications
+- Complete API access with authentication
+- Premium Plus features available
+- Load tested with 100+ concurrent jobs
+
+Sign in with Google to start monitoring your websites with AI-powered analysis!
+
 ## What It Does
 
 **World Wide Notifier** monitors websites for specific content changes and uses AI to analyze the significance of those changes. When content meets your defined criteria, it automatically sends notifications through multiple channels (email, Teams, Slack).
+
+### 🎯 **Perfect For**
+- **Business Intelligence**: Track competitor pricing, product launches, regulatory changes
+- **Content Monitoring**: News tracking, social media mentions, technical documentation updates
+- **Compliance**: Regulatory filings, policy changes, legal notices
+- **Marketing**: Brand monitoring, campaign tracking, industry insights
+- **Development**: API changes, service status updates, technical announcements
 
 ### Key Capabilities
 
@@ -79,9 +97,9 @@ make health
 ```
 
 ### 4. Access the Application
-- **Web Interface**: http://localhost:3000
+- **Web Interface**: http://localhost:3000 (or https://mon.duckerhub.com for live demo)
 - **API Documentation**: http://localhost:8000/docs
-- **API Endpoint**: http://localhost:8000/api/v1/
+- **API Endpoint**: http://localhost:8000/api/v1/ (or https://mon.duckerhub.com/api/v1/ for live demo)
 
 ## API Usage
 
@@ -94,10 +112,12 @@ export API_KEY="ak_live_your_generated_key"
 
 ### Example API Calls
 
+**Production API Examples (using https://mon.duckerhub.com):**
+
 ```bash
 # List all monitoring jobs
 curl -H "Authorization: Bearer $API_KEY" \
-  http://localhost:8000/api/v1/jobs
+  https://mon.duckerhub.com/api/v1/jobs
 
 # Create a new monitoring job
 curl -X POST \
@@ -110,20 +130,20 @@ curl -X POST \
     "frequency_minutes": 60,
     "threshold_score": 80
   }' \
-  http://localhost:8000/api/v1/jobs
+  https://mon.duckerhub.com/api/v1/jobs
 
 # Trigger immediate job execution
 curl -X POST \
   -H "Authorization: Bearer $API_KEY" \
-  http://localhost:8000/api/v1/jobs/{job_id}/run
+  https://mon.duckerhub.com/api/v1/jobs/{job_id}/run
 
 # Get job execution history
 curl -H "Authorization: Bearer $API_KEY" \
-  http://localhost:8000/api/v1/jobs/{job_id}/runs
+  https://mon.duckerhub.com/api/v1/jobs/{job_id}/runs
 
 # Get all alerts
 curl -H "Authorization: Bearer $API_KEY" \
-  http://localhost:8000/api/v1/alerts
+  https://mon.duckerhub.com/api/v1/alerts
 ```
 
 ## Key Features
