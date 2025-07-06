@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Request, Header
+from fastapi import FastAPI, HTTPException, Depends, Request, Header, WebSocket, WebSocketDisconnect
 from fastapi.security import HTTPBearer
 from fastapi.middleware.cors import CORSMiddleware
 import redis
@@ -16,6 +16,8 @@ import secrets
 import hashlib
 import hmac
 import time
+import asyncio
+from typing import Dict, Set
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 import psycopg2
@@ -27,6 +29,33 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="AI Monitoring API", version="1.0.0")
+
+# WebSocket connection manager
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[str, Set[WebSocket]] = {}
+        
+    async def connect(self, websocket: WebSocket, user_id: str):
+        await websocket.accept()
+        if user_id not in self.active_connections:
+            self.active_connections[user_id] = set()
+        self.active_connections[user_id].add(websocket)
+        
+    def disconnect(self, websocket: WebSocket, user_id: str):
+        if user_id in self.active_connections:
+            self.active_connections[user_id].discard(websocket)
+            if not self.active_connections[user_id]:
+                del self.active_connections[user_id]
+                
+    async def send_to_user(self, user_id: str, data: dict):
+        if user_id in self.active_connections:
+            for websocket in self.active_connections[user_id].copy():
+                try:
+                    await websocket.send_json(data)
+                except:
+                    self.active_connections[user_id].discard(websocket)
+
+manager = ConnectionManager()
 
 # CORS setup - Allow everything for development
 app.add_middleware(
@@ -678,6 +707,26 @@ async def create_alert(
                 )
                 conn.commit()
                 
+                # Get user ID for broadcasting
+                cur.execute(
+                    "SELECT user_id FROM jobs WHERE id = %s",
+                    (alert_data.get('job_id'),)
+                )
+                job_owner = cur.fetchone()
+                
+                if job_owner:
+                    # Broadcast new alert to connected WebSocket clients
+                    asyncio.create_task(broadcast_dashboard_update(
+                        job_owner['user_id'],
+                        "new_alert",
+                        {
+                            "alert_id": alert_id,
+                            "job_id": alert_data.get('job_id'),
+                            "title": alert_data.get('title'),
+                            "relevance_score": alert_data.get('relevance_score')
+                        }
+                    ))
+                
                 return {"alert_id": alert_id, "status": "created"}
     except Exception as e:
         print(f"ERROR creating alert: {e}")
@@ -739,6 +788,30 @@ def acknowledge_alert(alert_id: str, user_id: str, token: str = None):
 @app.get("/")
 async def root():
     return {"message": "AI Monitoring API is running"}
+
+@app.websocket("/ws/dashboard/{user_id}")
+async def websocket_endpoint(websocket: WebSocket, user_id: str, token: str = None):
+    """WebSocket endpoint for real-time dashboard updates"""
+    # Verify user authentication via token
+    if token:
+        try:
+            payload = verify_token(token)
+            authenticated_user_id = payload.get("sub")
+            if authenticated_user_id != user_id:
+                await websocket.close(code=1008, reason="Invalid user")
+                return
+        except:
+            await websocket.close(code=1008, reason="Invalid token")
+            return
+    
+    await manager.connect(websocket, user_id)
+    try:
+        while True:
+            # Send heartbeat every 30 seconds to keep connection alive
+            await asyncio.sleep(30)
+            await websocket.send_json({"type": "heartbeat", "timestamp": datetime.now().isoformat()})
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, user_id)
 
 @app.post("/auth/google")
 async def google_auth(token_request: GoogleTokenRequest):
@@ -1288,6 +1361,38 @@ async def run_job_now(job_id: str, current_user=Depends(get_current_user)):
         "status": "queued"
     }
 
+@app.post("/jobs/execution-update")
+async def update_job_execution_status(
+    execution_data: dict,
+    internal_key: str = Header(None, alias="X-Internal-API-Key")
+):
+    """Update job execution status and broadcast to WebSocket clients (internal API for worker_manager)"""
+    if internal_key != os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production"):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    try:
+        # Get user ID from job
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT user_id FROM jobs WHERE id = %s",
+                    (execution_data.get('job_id'),)
+                )
+                job_owner = cur.fetchone()
+                
+                if job_owner:
+                    # Broadcast job execution update to connected WebSocket clients
+                    await broadcast_dashboard_update(
+                        job_owner['user_id'],
+                        "job_execution_update",
+                        execution_data
+                    )
+                
+        return {"status": "update_broadcasted"}
+    except Exception as e:
+        logger.error(f"Failed to broadcast job execution update: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to broadcast update: {str(e)}")
+
 @app.get("/jobs/{job_id}/runs")
 async def get_job_runs(job_id: str, limit: int = 10, current_user=Depends(get_current_user)):
     """Get recent runs for a specific job with analysis results"""
@@ -1583,8 +1688,8 @@ async def get_user_stats(current_user=Depends(get_current_user)):
                 SELECT 
                     COUNT(*) as total_alerts,
                     COUNT(CASE WHEN is_acknowledged = FALSE THEN 1 END) as unack_alerts,
-                    COUNT(CASE WHEN created_at >= NOW() - INTERVAL '24 hours' THEN 1 END) as alerts_24h,
-                    COUNT(CASE WHEN created_at >= NOW() - INTERVAL '7 days' THEN 1 END) as alerts_7d
+                    COUNT(CASE WHEN a.created_at >= NOW() - INTERVAL '24 hours' THEN 1 END) as alerts_24h,
+                    COUNT(CASE WHEN a.created_at >= NOW() - INTERVAL '7 days' THEN 1 END) as alerts_7d
                 FROM alerts a
                 JOIN jobs j ON a.job_id = j.id
                 WHERE j.user_id = %s
@@ -1608,6 +1713,314 @@ async def get_user_stats(current_user=Depends(get_current_user)):
         },
         "subscription": subscription_info
     }
+
+# Dashboard helper functions
+async def get_mongodb_execution_data(run_id: str) -> dict:
+    """Get detailed execution data from MongoDB (if available)"""
+    try:
+        # This would fetch detailed execution data from MongoDB
+        # For now, return empty dict as MongoDB integration is optional
+        return {}
+    except Exception as e:
+        logger.warning(f"MongoDB fetch failed for run {run_id}: {e}")
+        return {}
+
+async def broadcast_dashboard_update(user_id: str, update_type: str, data: dict):
+    """Broadcast dashboard updates to all connected WebSocket clients for a user"""
+    try:
+        message = {
+            "type": update_type,
+            "timestamp": datetime.now().isoformat(),
+            "data": data
+        }
+        await manager.send_to_user(user_id, message)
+    except Exception as e:
+        logger.warning(f"Failed to broadcast update to user {user_id}: {e}")
+
+def estimate_completion_time(started_at, sources_processed: int, sources_total: int):
+    """Estimate when job will complete based on current progress"""
+    if sources_processed == 0 or sources_total == 0:
+        return None
+    
+    try:
+        elapsed_seconds = (datetime.now() - started_at).total_seconds()
+        avg_time_per_source = elapsed_seconds / sources_processed
+        remaining_sources = sources_total - sources_processed
+        estimated_remaining_seconds = remaining_sources * avg_time_per_source
+        
+        completion_time = datetime.now() + timedelta(seconds=estimated_remaining_seconds)
+        return {
+            "estimated_completion_at": completion_time.isoformat(),
+            "estimated_remaining_seconds": int(estimated_remaining_seconds),
+            "avg_time_per_source": round(avg_time_per_source, 1)
+        }
+    except Exception as e:
+        logger.warning(f"Could not estimate completion time: {e}")
+        return None
+
+@app.get("/dashboard/running-jobs")
+async def get_running_jobs(current_user=Depends(get_current_user)):
+    """Get currently running jobs with detailed stage information and MongoDB execution data"""
+    user_id = current_user['id']
+    
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            # Get running job executions with job details
+            cur.execute("""
+                SELECT 
+                    jr.id as run_id,
+                    jr.job_id,
+                    j.name as job_name,
+                    j.sources,
+                    j.prompt,
+                    j.threshold_score,
+                    jr.started_at,
+                    jr.sources_processed,
+                    jr.alerts_generated,
+                    jr.analysis_summary,
+                    EXTRACT(EPOCH FROM (NOW() - jr.started_at)) as runtime_seconds
+                FROM job_runs jr
+                JOIN jobs j ON jr.job_id = j.id
+                WHERE j.user_id = %s 
+                AND jr.status = 'running'
+                ORDER BY jr.started_at DESC
+            """, (user_id,))
+            
+            running_jobs = cur.fetchall()
+            
+            result = []
+            for job in running_jobs:
+                # Parse analysis summary for stage details
+                analysis_summary = job.get('analysis_summary') or {}
+                if isinstance(analysis_summary, str):
+                    try:
+                        analysis_summary = json.loads(analysis_summary)
+                    except:
+                        analysis_summary = {}
+                
+                # Determine current stage with more granular detection
+                current_stage = "initializing"
+                stage_details = {
+                    "current_operation": "Starting job execution",
+                    "sources_scraped": 0,
+                    "sources_analyzed": 0,
+                    "current_source": None,
+                    "next_stage": "scraping"
+                }
+                
+                sources_total = len(job['sources']) if job['sources'] else 0
+                sources_processed = job['sources_processed'] or 0
+                analysis_details = analysis_summary.get('analysis_details', [])
+                
+                if sources_processed == 0:
+                    current_stage = "initializing"
+                    stage_details["current_operation"] = "Preparing to scrape sources"
+                elif sources_processed < sources_total:
+                    # Currently scraping
+                    current_stage = "scraping"
+                    stage_details["current_operation"] = f"Scraping source {sources_processed + 1} of {sources_total}"
+                    stage_details["sources_scraped"] = sources_processed
+                    if job['sources'] and sources_processed < len(job['sources']):
+                        stage_details["current_source"] = job['sources'][sources_processed]
+                elif len(analysis_details) < sources_processed:
+                    # Scraping done, now analyzing
+                    current_stage = "analyzing"
+                    analyzing_count = len(analysis_details)
+                    stage_details["current_operation"] = f"Analyzing content {analyzing_count + 1} of {sources_processed}"
+                    stage_details["sources_scraped"] = sources_processed
+                    stage_details["sources_analyzed"] = analyzing_count
+                elif len(analysis_details) == sources_processed and sources_processed == sources_total:
+                    # Almost done, finalizing
+                    current_stage = "finalizing"
+                    stage_details["current_operation"] = "Finalizing job execution"
+                    stage_details["sources_scraped"] = sources_processed
+                    stage_details["sources_analyzed"] = len(analysis_details)
+                else:
+                    current_stage = "processing"
+                    stage_details["current_operation"] = "Processing job data"
+                
+                # Enhanced analysis details with outcomes
+                enhanced_analysis = []
+                for detail in analysis_details:
+                    enhanced_detail = {
+                        "source_url": detail.get('source_url', ''),
+                        "relevance_score": detail.get('relevance_score', 0),
+                        "alert_generated": detail.get('alert_generated', False),
+                        "title": detail.get('title', 'No title available'),
+                        "summary": detail.get('summary', 'No summary available'),
+                        "processed_at": detail.get('processed_at'),
+                        "stage_outcome": "Alert Generated" if detail.get('alert_generated') else 
+                                       f"Score {detail.get('relevance_score', 0)} (threshold: {job['threshold_score']})",
+                        "outcome_type": "success" if detail.get('alert_generated') else 
+                                      "warning" if detail.get('relevance_score', 0) >= job['threshold_score'] * 0.7 else "info"
+                    }
+                    enhanced_analysis.append(enhanced_detail)
+                
+                # Get MongoDB data for even more detailed tracking (non-blocking)
+                try:
+                    mongodb_data = await get_mongodb_execution_data(job['run_id'])
+                    if mongodb_data:
+                        stage_details.update(mongodb_data)
+                except Exception as e:
+                    logger.warning(f"Could not fetch MongoDB data for run {job['run_id']}: {e}")
+                
+                result.append({
+                    "run_id": job['run_id'],
+                    "job_id": job['job_id'],
+                    "job_name": job['job_name'],
+                    "job_prompt": job['prompt'][:100] + "..." if len(job['prompt']) > 100 else job['prompt'],
+                    "threshold_score": job['threshold_score'],
+                    "sources_total": sources_total,
+                    "sources_processed": sources_processed,
+                    "alerts_generated": job['alerts_generated'] or 0,
+                    "started_at": job['started_at'].isoformat() if job['started_at'] else None,
+                    "runtime_seconds": int(job['runtime_seconds']) if job['runtime_seconds'] else 0,
+                    "current_stage": current_stage,
+                    "stage_details": stage_details,
+                    "analysis_details": enhanced_analysis,
+                    "completion_percentage": round((sources_processed / sources_total * 100) if sources_total > 0 else 0, 1),
+                    "estimated_completion": estimate_completion_time(job['started_at'], sources_processed, sources_total) if sources_total > 0 else None
+                })
+            
+            return {"running_jobs": result}
+
+@app.get("/dashboard/live-stats")
+async def get_live_dashboard_stats(current_user=Depends(get_current_user)):
+    """Get enhanced real-time dashboard statistics"""
+    user_id = current_user['id']
+    
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            # Get configured jobs count
+            cur.execute("SELECT COUNT(*) as total_jobs FROM jobs WHERE user_id = %s", (user_id,))
+            total_jobs = cur.fetchone()['total_jobs']
+            
+            cur.execute("SELECT COUNT(*) as active_jobs FROM jobs WHERE user_id = %s AND is_active = TRUE", (user_id,))
+            active_jobs = cur.fetchone()['active_jobs']
+            
+            # Get currently running jobs count
+            cur.execute("""
+                SELECT COUNT(*) as running_jobs 
+                FROM job_runs jr
+                JOIN jobs j ON jr.job_id = j.id
+                WHERE j.user_id = %s AND jr.status = 'running'
+            """, (user_id,))
+            running_jobs = cur.fetchone()['running_jobs']
+            
+            # Get recent job runs summary (last 24 hours)
+            cur.execute("""
+                SELECT 
+                    COUNT(*) as total_runs,
+                    COUNT(CASE WHEN jr.status = 'completed' THEN 1 END) as completed_runs,
+                    COUNT(CASE WHEN jr.status = 'failed' THEN 1 END) as failed_runs,
+                    SUM(jr.sources_processed) as total_sources_processed,
+                    SUM(jr.alerts_generated) as total_alerts_generated
+                FROM job_runs jr
+                JOIN jobs j ON jr.job_id = j.id
+                WHERE j.user_id = %s 
+                AND jr.started_at >= NOW() - INTERVAL '24 hours'
+            """, (user_id,))
+            
+            runs_stats = cur.fetchone()
+            
+            # Get alert statistics
+            cur.execute("""
+                SELECT 
+                    COUNT(*) as total_alerts,
+                    COUNT(CASE WHEN is_acknowledged = FALSE THEN 1 END) as unack_alerts,
+                    COUNT(CASE WHEN a.created_at >= NOW() - INTERVAL '24 hours' THEN 1 END) as alerts_24h,
+                    COUNT(CASE WHEN a.created_at >= NOW() - INTERVAL '7 days' THEN 1 END) as alerts_7d
+                FROM alerts a
+                JOIN jobs j ON a.job_id = j.id
+                WHERE j.user_id = %s
+            """, (user_id,))
+            alert_stats = cur.fetchone()
+            
+            # Get subscription info
+            subscription_info = get_user_subscription_info(user_id)
+    
+    return {
+        "jobs": {
+            "total": total_jobs,
+            "active": active_jobs,
+            "inactive": total_jobs - active_jobs,
+            "currently_running": running_jobs
+        },
+        "execution_stats": {
+            "runs_24h": runs_stats['total_runs'] or 0,
+            "completed_runs_24h": runs_stats['completed_runs'] or 0,
+            "failed_runs_24h": runs_stats['failed_runs'] or 0,
+            "sources_processed_24h": runs_stats['total_sources_processed'] or 0,
+            "alerts_generated_24h": runs_stats['total_alerts_generated'] or 0
+        },
+        "alerts": {
+            "total": alert_stats['total_alerts'],
+            "unacknowledged": alert_stats['unack_alerts'],
+            "last_24_hours": alert_stats['alerts_24h'],
+            "last_7_days": alert_stats['alerts_7d']
+        },
+        "subscription": subscription_info
+    }
+
+@app.get("/dashboard/job-execution-history")
+async def get_job_execution_history(
+    current_user=Depends(get_current_user),
+    limit: int = 20
+):
+    """Get recent job execution history with detailed stages"""
+    user_id = current_user['id']
+    
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT 
+                    jr.id as run_id,
+                    jr.job_id,
+                    j.name as job_name,
+                    jr.started_at,
+                    jr.completed_at,
+                    jr.status,
+                    jr.sources_processed,
+                    jr.alerts_generated,
+                    jr.error_message,
+                    jr.analysis_summary,
+                    EXTRACT(EPOCH FROM (
+                        COALESCE(jr.completed_at, NOW()) - jr.started_at
+                    )) as duration_seconds
+                FROM job_runs jr
+                JOIN jobs j ON jr.job_id = j.id
+                WHERE j.user_id = %s
+                ORDER BY jr.started_at DESC
+                LIMIT %s
+            """, (user_id, limit))
+            
+            history = cur.fetchall()
+            
+            result = []
+            for run in history:
+                # Parse analysis summary
+                analysis_summary = run.get('analysis_summary') or {}
+                if isinstance(analysis_summary, str):
+                    try:
+                        analysis_summary = json.loads(analysis_summary)
+                    except:
+                        analysis_summary = {}
+                
+                result.append({
+                    "run_id": run['run_id'],
+                    "job_id": run['job_id'],
+                    "job_name": run['job_name'],
+                    "started_at": run['started_at'].isoformat() if run['started_at'] else None,
+                    "completed_at": run['completed_at'].isoformat() if run['completed_at'] else None,
+                    "status": run['status'],
+                    "sources_processed": run['sources_processed'] or 0,
+                    "alerts_generated": run['alerts_generated'] or 0,
+                    "duration_seconds": int(run['duration_seconds']) if run['duration_seconds'] else 0,
+                    "error_message": run['error_message'],
+                    "analysis_details": analysis_summary.get('analysis_details', [])
+                })
+            
+            return {"execution_history": result}
 
 @app.post("/alerts/bulk-acknowledge")
 async def bulk_acknowledge_alerts(

@@ -276,6 +276,93 @@ class ScalableWorkerManager:
             logger.warning(f"Error storing LLM analysis: {e}")
             return False
 
+    async def update_job_progress(self, job_run_id: str, sources_processed: int, 
+                                  analysis_results: List[Dict] = None, alerts_generated: int = 0):
+        """Update job run progress in real-time for live dashboard"""
+        try:
+            DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://monitoring_user:monitoring_pass@localhost:5432/monitoring_db")
+            conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+            conn.autocommit = True
+            
+            # Prepare incremental analysis summary for live tracking
+            analysis_summary = {}
+            if analysis_results:
+                analysis_summary = {
+                    "sources_analyzed": len(analysis_results),
+                    "alerts_generated": alerts_generated,
+                    "analysis_details": analysis_results[-10:],  # Keep last 10 for live view
+                    "last_updated": datetime.now().isoformat(),
+                    "status": "in_progress"
+                }
+            
+            with conn.cursor() as cur:
+                if analysis_results:
+                    cur.execute("""
+                        UPDATE job_runs 
+                        SET sources_processed = %s,
+                            alerts_generated = %s,
+                            analysis_summary = %s
+                        WHERE id = %s
+                    """, (
+                        sources_processed,
+                        alerts_generated,
+                        json.dumps(analysis_summary),
+                        job_run_id
+                    ))
+                else:
+                    cur.execute("""
+                        UPDATE job_runs 
+                        SET sources_processed = %s,
+                            alerts_generated = %s
+                        WHERE id = %s
+                    """, (
+                        sources_processed,
+                        alerts_generated,
+                        job_run_id
+                    ))
+            
+            conn.close()
+            logger.debug(f"Updated job_run {job_run_id} progress: {sources_processed} sources processed, {alerts_generated} alerts")
+            
+            # Broadcast job execution update via WebSocket
+            await self.broadcast_execution_update(job_run_id, sources_processed, analysis_results, alerts_generated)
+            
+        except Exception as e:
+            logger.warning(f"Failed to update job_run progress {job_run_id}: {e}")
+
+    async def broadcast_execution_update(self, job_run_id: str, sources_processed: int, 
+                                       analysis_results: List[Dict] = None, alerts_generated: int = 0):
+        """Broadcast job execution update to WebSocket clients"""
+        try:
+            api_url = os.getenv("API_SERVICE_URL", "http://api_service:8000")
+            headers = {
+                "X-Internal-API-Key": os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production"),
+                "Content-Type": "application/json"
+            }
+            
+            execution_data = {
+                "run_id": job_run_id,
+                "sources_processed": sources_processed,
+                "alerts_generated": alerts_generated,
+                "last_updated": datetime.now().isoformat(),
+                "analysis_details": analysis_results[-5:] if analysis_results else []  # Last 5 for live updates
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{api_url}/jobs/execution-update",
+                    json=execution_data,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=5)
+                ) as response:
+                    if response.status == 200:
+                        logger.debug(f"✅ Broadcasted execution update for {job_run_id}")
+                    else:
+                        logger.warning(f"Failed to broadcast execution update: {response.status}")
+                        
+        except Exception as e:
+            logger.warning(f"Error broadcasting execution update: {e}")
+
     async def complete_job_execution_tracking(self, job_run_id: str, summary: Dict) -> bool:
         """Complete job execution tracking with final summary"""
         try:
@@ -652,6 +739,15 @@ class ScalableWorkerManager:
                                 elif result is True:
                                     # Legacy case - just count as alert generated
                                     job_run_tracking[task.job_run_id]["alerts_generated"] += 1
+                                
+                                # Update progress in real-time for live dashboard
+                                tracking = job_run_tracking[task.job_run_id]
+                                await self.update_job_progress(
+                                    task.job_run_id,
+                                    tracking["sources_processed"],
+                                    tracking["analysis_results"],
+                                    tracking["alerts_generated"]
+                                )
                             return result
                     
                     # Process all tasks concurrently
