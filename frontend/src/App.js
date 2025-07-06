@@ -79,7 +79,7 @@ const MainApp = () => {
 
   const fetchJobs = async () => {
     try {
-      const response = await axios.get(`${API_URL}/jobs`);
+      const response = await axios.get(`${API_URL}/jobs?limit=1000`);
       setJobs(response.data);
     } catch (error) {
       console.error('Error fetching jobs:', error);
