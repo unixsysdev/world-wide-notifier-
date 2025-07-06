@@ -149,6 +149,7 @@ CREATE INDEX idx_alerts_updated_at ON alerts(updated_at);
 CREATE INDEX idx_source_health_url ON source_health(source_url);
 CREATE INDEX idx_notification_channels_user_id ON notification_channels(user_id);
 CREATE INDEX idx_job_notification_settings_job_id ON job_notification_settings(job_id);
+ALTER TABLE job_notification_settings ADD CONSTRAINT job_notification_settings_job_id_unique UNIQUE (job_id);
 CREATE INDEX idx_subscription_events_user_id ON subscription_events(user_id);
 CREATE INDEX idx_users_subscription_tier ON users(subscription_tier);
 CREATE INDEX idx_users_stripe_customer_id ON users(stripe_customer_id);

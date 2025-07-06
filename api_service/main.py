@@ -961,13 +961,20 @@ async def update_job(job_id: str, job: JobCreate, current_user=Depends(get_curre
                  job.alert_cooldown_minutes, job.max_alerts_per_hour, job_id)
             )
             
-            # Update job notification settings
+            # Update job notification settings (UPSERT - insert if not exists, update if exists)
             cur.execute(
-                """UPDATE job_notification_settings SET notification_channel_ids = %s, 
-                   repeat_frequency_minutes = %s, max_repeats = %s, require_acknowledgment = %s
-                   WHERE job_id = %s""",
-                (json.dumps(job.notification_channel_ids), job.repeat_frequency_minutes, 
-                 job.max_repeats, job.require_acknowledgment, job_id)
+                """INSERT INTO job_notification_settings 
+                   (job_id, notification_channel_ids, repeat_frequency_minutes, max_repeats, require_acknowledgment)
+                   VALUES (%s, %s, %s, %s, %s)
+                   ON CONFLICT (job_id) 
+                   DO UPDATE SET 
+                       notification_channel_ids = EXCLUDED.notification_channel_ids,
+                       repeat_frequency_minutes = EXCLUDED.repeat_frequency_minutes,
+                       max_repeats = EXCLUDED.max_repeats,
+                       require_acknowledgment = EXCLUDED.require_acknowledgment,
+                       updated_at = CURRENT_TIMESTAMP""",
+                (job_id, json.dumps(job.notification_channel_ids), job.repeat_frequency_minutes, 
+                 job.max_repeats, job.require_acknowledgment)
             )
             
             conn.commit()
@@ -1053,9 +1060,9 @@ async def get_jobs(
             notification_channel_ids=job['notification_channel_ids'] or [],
             alert_cooldown_minutes=job['alert_cooldown_minutes'] or 60,
             max_alerts_per_hour=job['max_alerts_per_hour'] or 5,
-            repeat_frequency_minutes=job.get('repeat_frequency_minutes', 60),
-            max_repeats=job.get('max_repeats', 5),
-            require_acknowledgment=job.get('require_acknowledgment', True),
+            repeat_frequency_minutes=job['repeat_frequency_minutes'] or 60,
+            max_repeats=job['max_repeats'] or 5,
+            require_acknowledgment=job['require_acknowledgment'] if job['require_acknowledgment'] is not None else True,
             created_at=job['created_at'].isoformat()
         ))
     
