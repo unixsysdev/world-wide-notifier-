@@ -76,26 +76,7 @@ stripe.api_key = STRIPE_SECRET_KEY
 class BulkAcknowledgeRequest(BaseModel):
     alert_ids: List[str]
 
-# Authentication
-security = HTTPBearer()
 
-def get_current_user(token: str = Depends(security)):
-    """Get current user from JWT token"""
-    try:
-        payload = jwt.decode(token.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        user_id = payload.get("sub")
-        if not user_id:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        
-        user = get_user_by_id(user_id)
-        if not user:
-            raise HTTPException(status_code=401, detail="User not found")
-        
-        return user
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.JWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
 
 # Security
 security = HTTPBearer(auto_error=False)
@@ -2234,13 +2215,14 @@ async def get_jobs_api(
             notification_channel_ids=job['notification_channel_ids'] or [],
             alert_cooldown_minutes=job['alert_cooldown_minutes'] or 60,
             max_alerts_per_hour=job['max_alerts_per_hour'] or 5,
-            repeat_frequency_minutes=job.get('repeat_frequency_minutes', 60),
-            max_repeats=job.get('max_repeats', 5),
-            require_acknowledgment=job.get('require_acknowledgment', True),
+            repeat_frequency_minutes=job['repeat_frequency_minutes'] or 60,
+            max_repeats=job['max_repeats'] or 5,
+            require_acknowledgment=job['require_acknowledgment'] if job['require_acknowledgment'] is not None else True,
             created_at=job['created_at'].isoformat()
         ))
     
     return jobs
+
 
 
 @app.get("/api/v1/user/profile")
@@ -2367,9 +2349,9 @@ async def get_job_api(
         notification_channel_ids=job['notification_channel_ids'] or [],
         alert_cooldown_minutes=job['alert_cooldown_minutes'] or 60,
         max_alerts_per_hour=job['max_alerts_per_hour'] or 5,
-        repeat_frequency_minutes=job.get('repeat_frequency_minutes', 60),
-        max_repeats=job.get('max_repeats', 5),
-        require_acknowledgment=job.get('require_acknowledgment', True),
+        repeat_frequency_minutes=job['repeat_frequency_minutes'] or 60,
+        max_repeats=job['max_repeats'] or 5,
+        require_acknowledgment=job['require_acknowledgment'] if job['require_acknowledgment'] is not None else True,
         created_at=job['created_at'].isoformat()
     )
 
