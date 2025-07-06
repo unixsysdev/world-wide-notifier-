@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 
 const JobCard = ({ job, onToggleExpansion, isExpanded }) => {
   const formatDuration = (seconds) => {
@@ -50,7 +50,13 @@ const JobCard = ({ job, onToggleExpansion, isExpanded }) => {
   };
 
   return (
-    <div className="border border-gray-200 dark:border-gray-600 rounded-lg p-5 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-700 dark:to-gray-800 relative overflow-hidden">
+    <div className={`border border-gray-200 dark:border-gray-600 rounded-lg p-5 relative overflow-hidden transition-all duration-700 ease-in-out transform ${
+      job.current_stage === 'completed' 
+        ? 'bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 scale-95 opacity-75' 
+        : job.current_stage === 'failed'
+        ? 'bg-gradient-to-r from-red-50 to-rose-50 dark:from-red-900/20 dark:to-rose-900/20 scale-95 opacity-75'
+        : 'bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-700 dark:to-gray-800 scale-100 opacity-100 hover:scale-105'
+    } ${job.current_stage === 'finalizing' ? 'animate-pulse' : ''}`}>
       {/* Animated background for running state */}
       <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-400 via-indigo-500 to-purple-600 animate-pulse"></div>
       
@@ -59,7 +65,16 @@ const JobCard = ({ job, onToggleExpansion, isExpanded }) => {
           <div className="flex-1">
             <div className="flex items-center space-x-3 mb-2">
               <h3 className="font-semibold text-gray-900 dark:text-white text-lg">{job.job_name}</h3>
-              <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStageColor(job.current_stage)} animate-pulse`}>
+              <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStageColor(job.current_stage)} ${
+                job.current_stage === 'finalizing' || job.current_stage === 'completed' 
+                  ? 'animate-pulse' 
+                  : job.current_stage === 'failed' 
+                  ? 'animate-bounce' 
+                  : 'animate-pulse'
+              }`}>
+                {job.current_stage === 'completed' && '✅ '}
+                {job.current_stage === 'failed' && '❌ '}
+                {job.current_stage === 'finalizing' && '🏁 '}
                 {job.current_stage.charAt(0).toUpperCase() + job.current_stage.slice(1)}
               </span>
               {job.stage_details?.current_operation && (

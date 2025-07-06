@@ -1,143 +1,6 @@
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 
 const LandingPage = ({ onShowLogin }) => {
-  const mountRef = useRef(null);
-
-  useEffect(() => {
-    // Three.js scene setup for animated background
-    if (!mountRef.current) return;
-
-    // Try to load Three.js dynamically, with graceful fallback
-    const loadThreeJS = async () => {
-      try {
-        const THREE = await import('three');
-      const scene = new THREE.Scene();
-      const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-      const renderer = new THREE.WebGLRenderer({ 
-        alpha: true, 
-        antialias: false, // Disable antialiasing for better performance
-        powerPreference: "low-power" // Use integrated graphics when available
-      });
-      
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.setClearColor(0x000000, 0); // Transparent background
-      mountRef.current.appendChild(renderer.domElement);
-
-      // Create floating particles (reduced count for performance)
-      const particlesGeometry = new THREE.BufferGeometry();
-      const particlesCount = 80; // Reduced from 150
-      const posArray = new Float32Array(particlesCount * 3);
-
-      for (let i = 0; i < particlesCount * 3; i++) {
-        posArray[i] = (Math.random() - 0.5) * 20;
-      }
-
-      particlesGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
-
-      const particlesMaterial = new THREE.PointsMaterial({
-        size: 0.03,
-        color: '#3B82F6',
-        transparent: true,
-        opacity: 0.8,
-      });
-
-      const particlesMesh = new THREE.Points(particlesGeometry, particlesMaterial);
-      scene.add(particlesMesh);
-
-      // Create floating geometric shapes (reduced count)
-      const shapes = [];
-      for (let i = 0; i < 5; i++) { // Reduced from 8
-        const geometry = Math.random() > 0.5 
-          ? new THREE.BoxGeometry(0.2, 0.2, 0.2)
-          : new THREE.SphereGeometry(0.15, 8, 6);
-        
-        const material = new THREE.MeshBasicMaterial({
-          color: i % 2 === 0 ? '#3B82F6' : '#8B5CF6',
-          transparent: true,
-          opacity: 0.6,
-        });
-
-        const shape = new THREE.Mesh(geometry, material);
-        shape.position.set(
-          (Math.random() - 0.5) * 10,
-          (Math.random() - 0.5) * 10,
-          (Math.random() - 0.5) * 10
-        );
-        shapes.push(shape);
-        scene.add(shape);
-      }
-
-      camera.position.z = 5;
-
-      // Animation loop with performance optimizations
-      let lastTime = 0;
-      let isScrolling = false;
-      let scrollTimeout;
-      const targetFPS = 30; // Reduce from 60fps to 30fps
-      const frameInterval = 1000 / targetFPS;
-      
-      // Pause animation during scroll for better performance
-      const handleScroll = () => {
-        isScrolling = true;
-        clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(() => {
-          isScrolling = false;
-        }, 150);
-      };
-      
-      window.addEventListener('scroll', handleScroll, { passive: true });
-      
-      const animate = (currentTime) => {
-        requestAnimationFrame(animate);
-        
-        // Skip animation during scroll
-        if (isScrolling) return;
-        
-        // Throttle animation to 30fps for better performance
-        if (currentTime - lastTime < frameInterval) return;
-        lastTime = currentTime;
-
-        // Rotate particles (slower)
-        particlesMesh.rotation.x += 0.0005; // Reduced from 0.001
-        particlesMesh.rotation.y += 0.001;  // Reduced from 0.002
-
-        // Animate shapes (less intensive)
-        shapes.forEach((shape, index) => {
-          shape.rotation.x += 0.005 + index * 0.0005; // Reduced animation speed
-          shape.rotation.y += 0.005 + index * 0.001;
-          shape.position.y += Math.sin(Date.now() * 0.0005 + index) * 0.0005; // Slower movement
-        });
-
-        renderer.render(scene, camera);
-      };
-
-      animate(0);
-
-      // Handle resize
-      const handleResize = () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-      };
-
-      window.addEventListener('resize', handleResize);
-
-        // Cleanup
-        return () => {
-          window.removeEventListener('resize', handleResize);
-          window.removeEventListener('scroll', handleScroll);
-          if (mountRef.current && renderer.domElement) {
-            mountRef.current.removeChild(renderer.domElement);
-          }
-          renderer.dispose();
-        };
-      } catch (err) {
-        console.log('Three.js failed to load, using fallback background');
-      }
-    };
-
-    loadThreeJS();
-  }, []);
 
   const testimonials = [
     {
@@ -207,8 +70,8 @@ const LandingPage = ({ onShowLogin }) => {
 
   return (
     <div className="relative min-h-screen overflow-hidden dark:bg-gray-900">
-      {/* Three.js Background */}
-      <div ref={mountRef} className="fixed inset-0 pointer-events-none" style={{ zIndex: 1 }} />
+
+
       
       {/* Gradient Background */}
       <div className="fixed inset-0 bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50" style={{ zIndex: 2 }} />

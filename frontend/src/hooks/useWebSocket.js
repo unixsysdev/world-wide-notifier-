@@ -21,7 +21,7 @@ export const useWebSocket = (user, onMessage) => {
         return;
       }
       
-      // WebSocket endpoint - nginx strips /api prefix for non-v1 routes
+      // WebSocket endpoint 
       const wsUrl = `${WS_URL}/api/ws/dashboard/${user.id}?token=${encodeURIComponent(token)}`;
       
       console.log('Connecting to WebSocket:', wsUrl);
@@ -60,10 +60,10 @@ export const useWebSocket = (user, onMessage) => {
         setConnectionStatus('Disconnected');
         
         // Reconnect with exponential backoff
-        if (reconnectAttempts.current < 10) {
-          const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000);
+        if (reconnectAttempts.current < 5) {
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000);
           console.log(`Reconnecting in ${delay}ms...`);
-          setConnectionStatus(`Reconnecting in ${delay/1000}s...`);
+          setConnectionStatus(`Reconnecting in ${Math.ceil(delay/1000)}s...`);
           
           reconnectTimeoutRef.current = setTimeout(() => {
             reconnectAttempts.current++;
@@ -71,6 +71,7 @@ export const useWebSocket = (user, onMessage) => {
           }, delay);
         } else {
           setConnectionStatus('Connection failed');
+          console.log('Max reconnection attempts reached');
         }
       };
 

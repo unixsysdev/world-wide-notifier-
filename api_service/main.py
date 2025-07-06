@@ -1904,6 +1904,8 @@ async def get_live_dashboard_stats(current_user=Depends(get_current_user)):
     """Get enhanced real-time dashboard statistics"""
     user_id = current_user['id']
     
+    print(f"DEBUG: Fetching dashboard stats for user {user_id}")
+    
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             # Get configured jobs count
@@ -1937,6 +1939,7 @@ async def get_live_dashboard_stats(current_user=Depends(get_current_user)):
             """, (user_id,))
             
             runs_stats = cur.fetchone()
+            print(f"DEBUG: Runs stats: {runs_stats}")
             
             # Get alert statistics
             cur.execute("""
