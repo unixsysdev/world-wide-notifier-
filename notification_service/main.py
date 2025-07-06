@@ -87,7 +87,17 @@ class NotificationService:
                             alerts_to_repeat = cur.fetchall()
                             
                             for alert in alerts_to_repeat:
-                                self.send_repeat_notification(alert)
+                                try:
+                                    self.send_repeat_notification(alert)
+                                except psycopg2.ProgrammingError as e:
+                                    if "updated_at" in str(e) and "does not exist" in str(e):
+                                        logger.error(f"Database schema error - missing updated_at column in alerts table: {e}")
+                                        logger.error("Please run the migration: migration_add_updated_at_to_alerts.sql")
+                                        return  # Stop processing to prevent spam
+                                    else:
+                                        logger.error(f"Database error processing alert {alert.get('id', 'unknown')}: {e}")
+                                except Exception as e:
+                                    logger.error(f"Error processing individual alert {alert.get('id', 'unknown')}: {e}")
                     
                     # If we get here, the operation was successful
                     break
@@ -99,64 +109,74 @@ class NotificationService:
                         time.sleep((attempt + 1) * 2)
                     else:
                         logger.error("Failed to connect to database after all retries")
+                except psycopg2.ProgrammingError as e:
+                    if "updated_at" in str(e) and "does not exist" in str(e):
+                        logger.error(f"Database schema error - missing updated_at column in alerts table: {e}")
+                        logger.error("Please run the migration: migration_add_updated_at_to_alerts.sql or apply_migration.sh")
+                        return  # Stop processing to prevent spam
+                    else:
+                        logger.error(f"Database error: {e}")
+                        break
                 except Exception as e:
                     logger.error(f"Error processing repeat notifications: {e}")
                     break
 
+
     
     def send_repeat_notification(self, alert):
-        """Send repeat notification for an alert"""
-        try:
-            with psycopg2.connect(self.database_url) as conn:
-                with conn.cursor() as cur:
-                    # Check rate limiting for repeats (separate from new alerts)
-                    current_hour = datetime.now().strftime('%Y-%m-%d-%H')
-                    repeat_rate_key = f"repeat_rate_limit:{alert['job_id']}:{current_hour}"
-                    repeat_count_this_hour = self.redis_client.get(repeat_rate_key)
-                    
-                    # Allow up to 10 repeats per hour (separate limit from new alerts)
-                    if repeat_count_this_hour and int(repeat_count_this_hour) >= 10:
-                        logger.info(f"Repeat rate limit exceeded for job {alert['job_id']}")
-                        return
-                    
-                    # Prepare alert data for notification
-                    alert_data = {
-                        'id': alert['id'],
-                        'job_id': alert['job_id'],
-                        'source_url': alert['source_url'],
-                        'title': f"🔄 REMINDER: {alert['title']}",
-                        'content': f"This is repeat #{alert['repeat_count'] + 1}.\n\n{alert['content']}",
-                        'relevance_score': alert['relevance_score'],
-                        'timestamp': datetime.now().isoformat(),
-                        'is_repeat': True,
-                        'original_created_at': alert['created_at'].isoformat()
-                    }
-                    
-                    # Process the repeat notification (reuse existing logic)
-                    self.process_alert(alert_data)
-                    
-                    # Update repeat tracking
-                    next_repeat_time = datetime.now() + timedelta(minutes=alert['repeat_frequency_minutes'])
-                    new_repeat_count = alert['repeat_count'] + 1
-                    
-                    cur.execute("""
-                        UPDATE alerts 
-                        SET repeat_count = %s, 
-                            next_repeat_at = %s,
-                            updated_at = CURRENT_TIMESTAMP
-                        WHERE id = %s
-                    """, (new_repeat_count, next_repeat_time, alert['id']))
-                    
-                    conn.commit()
-                    
-                    # Update rate limiting for repeats
-                    self.redis_client.incr(repeat_rate_key)
-                    self.redis_client.expire(repeat_rate_key, 3600)  # 1 hour
-                    
-                    logger.info(f"✅ Sent repeat notification #{new_repeat_count} for alert {alert['id']}")
-                    
-        except Exception as e:
-            logger.error(f"Error sending repeat notification: {e}")    
+            """Send repeat notification for an alert"""
+            try:
+                with psycopg2.connect(self.database_url) as conn:
+                    with conn.cursor() as cur:
+                        # Check rate limiting for repeats (separate from new alerts)
+                        current_hour = datetime.now().strftime('%Y-%m-%d-%H')
+                        repeat_rate_key = f"repeat_rate_limit:{alert['job_id']}:{current_hour}"
+                        repeat_count_this_hour = self.redis_client.get(repeat_rate_key)
+                        
+                        # Allow up to 10 repeats per hour (separate limit from new alerts)
+                        if repeat_count_this_hour and int(repeat_count_this_hour) >= 10:
+                            logger.info(f"Repeat rate limit exceeded for job {alert['job_id']}")
+                            return
+                        
+                        # Prepare alert data for notification
+                        alert_data = {
+                            'id': alert['id'],
+                            'job_id': alert['job_id'],
+                            'source_url': alert['source_url'],
+                            'title': f"🔄 REMINDER: {alert['title']}",
+                            'content': f"This is repeat #{alert['repeat_count'] + 1}.\n\n{alert['content']}",
+                            'relevance_score': alert['relevance_score'],
+                            'timestamp': datetime.now().isoformat(),
+                            'is_repeat': True,
+                            'original_created_at': alert['created_at'].isoformat()
+                        }
+                        
+                        # Process the repeat notification (reuse existing logic)
+                        self.process_alert(alert_data)
+                        
+                        # Update repeat tracking
+                        next_repeat_time = datetime.now() + timedelta(minutes=alert['repeat_frequency_minutes'])
+                        new_repeat_count = alert['repeat_count'] + 1
+                        
+                        # Update without referencing updated_at column (in case it doesn't exist)
+                        cur.execute("""
+                            UPDATE alerts 
+                            SET repeat_count = %s, 
+                                next_repeat_at = %s
+                            WHERE id = %s
+                        """, (new_repeat_count, next_repeat_time, alert['id']))
+                        
+                        conn.commit()
+                        
+                        # Update rate limiting for repeats
+                        self.redis_client.incr(repeat_rate_key)
+                        self.redis_client.expire(repeat_rate_key, 3600)  # 1 hour
+                        
+                        logger.info(f"✅ Sent repeat notification #{new_repeat_count} for alert {alert['id']}")
+                        
+            except Exception as e:
+                logger.error(f"Error sending repeat notification: {e}")    
+    
     def get_db_connection(self):
         """Get database connection"""
         return psycopg2.connect(self.database_url, cursor_factory=RealDictCursor)

@@ -75,7 +75,8 @@ CREATE TABLE alerts (
     next_repeat_at TIMESTAMP,
     repeat_frequency_minutes INTEGER DEFAULT 60, -- How often to repeat if not acknowledged
     max_repeats INTEGER DEFAULT 5, -- Maximum number of repeats
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Sources health table
@@ -144,6 +145,7 @@ CREATE INDEX idx_alerts_job_id ON alerts(job_id);
 CREATE INDEX idx_alerts_created_at ON alerts(created_at);
 CREATE INDEX idx_alerts_acknowledged ON alerts(is_acknowledged);
 CREATE INDEX idx_alerts_next_repeat ON alerts(next_repeat_at);
+CREATE INDEX idx_alerts_updated_at ON alerts(updated_at);
 CREATE INDEX idx_source_health_url ON source_health(source_url);
 CREATE INDEX idx_notification_channels_user_id ON notification_channels(user_id);
 CREATE INDEX idx_job_notification_settings_job_id ON job_notification_settings(job_id);

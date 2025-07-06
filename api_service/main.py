@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Request, Header
+from fastapi import FastAPI, HTTPException, Depends, Request, Header
 from fastapi.security import HTTPBearer
 from fastapi.middleware.cors import CORSMiddleware
 import redis
@@ -20,6 +20,11 @@ from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import logging
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="AI Monitoring API", version="1.0.0")
 
@@ -60,7 +65,37 @@ STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 STRIPE_PREMIUM_PRICE_ID = os.getenv("STRIPE_PREMIUM_PRICE_ID")
 STRIPE_PREMIUM_PLUS_PRICE_ID = os.getenv("STRIPE_PREMIUM_PLUS_PRICE_ID")
 
+# Database connection function
+def get_db_connection():
+    """Get database connection"""
+    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+
 stripe.api_key = STRIPE_SECRET_KEY
+
+# Pydantic models
+class BulkAcknowledgeRequest(BaseModel):
+    alert_ids: List[str]
+
+# Authentication
+security = HTTPBearer()
+
+def get_current_user(token: str = Depends(security)):
+    """Get current user from JWT token"""
+    try:
+        payload = jwt.decode(token.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        
+        user = get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        
+        return user
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 # Security
 security = HTTPBearer(auto_error=False)
