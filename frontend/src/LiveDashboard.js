@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import useWebSocket from './hooks/useWebSocket';
 import JobCard from './components/JobCard';
+import { formatTimeAgoLocal, formatLocalDateTime, formatLocalTime, getTimezoneInfo } from './utils/timeUtils';
 
 // Add CSS animations for smooth transitions
 const style = document.createElement('style');
@@ -28,8 +29,64 @@ style.textContent = `
     }
   }
   
+  @keyframes alertGlow {
+    0%, 100% {
+      box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+    }
+    50% {
+      box-shadow: 0 0 40px rgba(239, 68, 68, 0.8);
+    }
+  }
+  
+  @keyframes stageProgress {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+  
+  @keyframes dataFlow {
+    0% {
+      transform: translateX(-100%);
+      opacity: 0;
+    }
+    50% {
+      opacity: 1;
+    }
+    100% {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+  }
+  
   .job-completing {
-    animation: slideOutFadeOut 0.5s ease-in forwards;
+    animation: slideOutFadeOut 3s ease-in forwards;
+  }
+  
+  .job-alert-generated {
+    animation: alertGlow 2s ease-in-out infinite;
+  }
+  
+  .stage-processing {
+    background: linear-gradient(270deg, #3b82f6, #8b5cf6, #06b6d4, #10b981);
+    background-size: 400% 400%;
+    animation: stageProgress 3s ease infinite;
+  }
+  
+  .data-flowing::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #3b82f6, transparent);
+    animation: dataFlow 2s linear infinite;
   }
 `;
 document.head.appendChild(style);
@@ -134,14 +191,39 @@ const LiveDashboard = ({ user, userSubscription }) => {
           if (!jobExists && message.data.status !== 'completed' && message.data.status !== 'failed') {
             // Add new job if it doesn't exist and isn't already done
             console.log('➕ Adding NEW running job:', message.data.run_id);
-            return [...prev, message.data];
+            const newJob = {
+              ...message.data,
+              runtime_seconds: 0,
+              completion_percentage: 0,
+              sources_processed: 0,
+              alerts_generated: 0,
+              started_at: new Date().toISOString()
+            };
+            return [...prev, newJob];
           }
           
-          // Update existing job
+          // Update existing job with enhanced stage data
           const updatedJobs = prev.map(job => {
             if (job.run_id === message.data.run_id) {
               console.log('🔄 Updating existing job:', job.run_id, 'from', job.current_stage, 'to', message.data.current_stage);
-              return { ...job, ...message.data };
+              
+              // Calculate completion percentage based on sources
+              const completionPercentage = job.sources_total > 0 
+                ? Math.round((message.data.sources_processed || job.sources_processed || 0) / job.sources_total * 100)
+                : 0;
+              
+              // Calculate runtime
+              const startTime = new Date(job.started_at || Date.now());
+              const runtime = Math.floor((Date.now() - startTime.getTime()) / 1000);
+              
+              return { 
+                ...job, 
+                ...message.data,
+                completion_percentage: completionPercentage,
+                runtime_seconds: runtime,
+                // Preserve analysis details if not provided in update
+                analysis_details: message.data.analysis_details || job.analysis_details || []
+              };
             }
             return job;
           });
@@ -163,6 +245,30 @@ const LiveDashboard = ({ user, userSubscription }) => {
             fetchExecutionHistory();
           }, 3000);
         }
+        break;
+        
+      case 'stage_update':
+        console.log('🎭 STAGE UPDATE - Detailed stage progress:', message.data);
+        setRunningJobs(prev => {
+          return prev.map(job => {
+            if (job.run_id === message.data.run_id) {
+              console.log('🎬 Updating stage for job:', job.run_id, 'to stage:', message.data.current_stage);
+              
+              // Calculate runtime
+              const startTime = new Date(job.started_at || Date.now());
+              const runtime = Math.floor((Date.now() - startTime.getTime()) / 1000);
+              
+              return {
+                ...job,
+                current_stage: message.data.current_stage,
+                stage_data: message.data.stage_data || {},
+                runtime_seconds: runtime,
+                last_stage_update: Date.now()
+              };
+            }
+            return job;
+          });
+        });
         break;
         
       case 'dashboard_stats_update':
@@ -271,36 +377,8 @@ const LiveDashboard = ({ user, userSubscription }) => {
 
 
 
-  const formatTimeAgo = (timestamp) => {
-    const now = new Date();
-    const time = new Date(timestamp);
-    const diffMs = now - time;
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMins / 60);
-    const diffSeconds = Math.floor(diffMs / 1000);
-    
-    // Simplified relative time - fuck complex timezone calculations
-    if (diffSeconds < 0) {
-      return 'In the future'; // Server clock issue
-    }
-    if (diffSeconds < 30) return 'Just now';
-    if (diffSeconds < 60) return 'Less than a minute ago';
-    if (diffMins < 2) return '1 minute ago';
-    if (diffMins < 15) return `${diffMins} minutes ago`;
-    if (diffMins < 30) return 'About 15 minutes ago';
-    if (diffMins < 60) return 'About 30 minutes ago';
-    if (diffHours < 2) return 'About 1 hour ago';
-    if (diffHours < 6) return `About ${diffHours} hours ago`;
-    if (diffHours < 24) return 'Earlier today';
-    
-    const diffDays = Math.floor(diffHours / 24);
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays} days ago`;
-    if (diffDays < 30) return 'Last few weeks';
-    
-    // For very old stuff, just show the actual date
-    return time.toLocaleDateString();
-  };
+  // Use timezone-aware time formatting
+  const formatTimeAgo = formatTimeAgoLocal;
 
   if (loading) {
     return (
@@ -318,10 +396,27 @@ const LiveDashboard = ({ user, userSubscription }) => {
       {/* Header with Auto-refresh toggle */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <h1 className="text-xl lg:text-2xl font-bold text-gray-800 dark:text-white flex items-center">
-          <span className="mr-2 lg:mr-3 text-2xl lg:text-3xl">⚡</span>
+          <span className="mr-2 lg:mr-3 text-2xl lg:text-3xl animate-pulse">⚡</span>
           <div>
-            <div>Live Execution Monitor</div>
-            <div className="text-xs lg:text-sm text-gray-600 dark:text-gray-400 font-normal">Real-time job execution tracking</div>
+            <div className="flex items-center space-x-3">
+              <span>Live Execution Monitor</span>
+              {runningJobs.length > 0 && (
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                  <span className="text-sm font-medium text-green-600 dark:text-green-400">
+                    {runningJobs.length} active job{runningJobs.length > 1 ? 's' : ''}
+                  </span>
+                </div>
+              )}
+            </div>
+            <div className="text-xs lg:text-sm text-gray-600 dark:text-gray-400 font-normal">
+              Real-time job execution tracking with AI analysis
+              {runningJobs.length > 0 && (
+                <span className="ml-2 text-blue-600 dark:text-blue-400">
+                  • Processing {runningJobs.reduce((sum, job) => sum + (job.sources_total || 0), 0)} sources
+                </span>
+              )}
+            </div>
           </div>
         </h1>
         
@@ -358,6 +453,24 @@ const LiveDashboard = ({ user, userSubscription }) => {
             className="px-2 py-1 rounded-full text-xs font-medium transition-colors bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 hover:bg-purple-200 dark:hover:bg-purple-800"
           >
             🔄 Force
+          </button>
+          
+          <button
+            onClick={() => {
+              const tzInfo = getTimezoneInfo();
+              console.log('🕐 TIMEZONE INFO:');
+              console.log('Local Time:', tzInfo.localTime);
+              console.log('UTC Time:', tzInfo.utcTime);
+              console.log('Timezone Offset:', tzInfo.timezoneOffset, 'minutes');
+              console.log('Timezone:', tzInfo.timezone);
+              console.log('Running Jobs Start Times:');
+              runningJobs.forEach(job => {
+                console.log(`- ${job.job_name}: Server=${job.started_at}, Local=${formatLocalDateTime(job.started_at)}`);
+              });
+            }}
+            className="px-2 py-1 rounded-full text-xs font-medium transition-colors bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 hover:bg-green-200 dark:hover:bg-green-800"
+          >
+            🕐 TZ
           </button>
           
 
@@ -425,6 +538,52 @@ const LiveDashboard = ({ user, userSubscription }) => {
         </div>
       </div>
 
+      {/* Live Stage Progress Summary */}
+      {runningJobs.length > 0 && (
+        <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border border-blue-200 dark:border-blue-700">
+          <h3 className="text-lg font-bold text-blue-900 dark:text-blue-200 mb-3 flex items-center">
+            <span className="mr-2">🎭</span>
+            Live Stage Progress
+          </h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            {['initializing', 'scraping', 'analyzing', 'alert_evaluation', 'creating_alert', 'finalizing'].map(stage => {
+              const jobsInStage = runningJobs.filter(job => job.current_stage === stage);
+              const stageNames = {
+                initializing: '🔄 Initializing',
+                scraping: '🌐 Scraping',
+                analyzing: '🧠 Analyzing', 
+                alert_evaluation: '⚖️ Evaluating',
+                creating_alert: '🚨 Creating Alerts',
+                finalizing: '🏁 Finalizing'
+              };
+              
+              return (
+                <div key={stage} className={`text-center p-3 rounded-lg border transition-all ${
+                  jobsInStage.length > 0 
+                    ? 'bg-white dark:bg-gray-700 border-blue-300 dark:border-blue-600 shadow-md transform scale-105' 
+                    : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-600 opacity-50'
+                }`}>
+                  <div className={`text-sm font-medium mb-1 ${
+                    jobsInStage.length > 0 
+                      ? 'text-blue-900 dark:text-blue-200' 
+                      : 'text-gray-500 dark:text-gray-400'
+                  }`}>
+                    {stageNames[stage]}
+                  </div>
+                  <div className={`text-xl font-bold ${
+                    jobsInStage.length > 0 
+                      ? 'text-blue-600 dark:text-blue-400 animate-pulse' 
+                      : 'text-gray-400 dark:text-gray-500'
+                  }`}>
+                    {jobsInStage.length}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Live Running Jobs Section */}
       {runningJobs.length > 0 ? (
         <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-md border border-gray-100 dark:border-gray-700">
@@ -435,7 +594,7 @@ const LiveDashboard = ({ user, userSubscription }) => {
               {runningJobs.length} active
             </span>
             <span className="ml-2 text-xs text-gray-500">
-              Last update: {new Date(lastUpdate).toLocaleTimeString()}
+              Last update: {formatLocalTime(new Date(lastUpdate).toISOString())}
             </span>
           </h2>
           
@@ -443,16 +602,20 @@ const LiveDashboard = ({ user, userSubscription }) => {
             {runningJobs.map((job, index) => (
               <div 
                 key={job.run_id}
-                className={`transform transition-all duration-500 ease-in-out ${
+                className={`transform transition-all duration-700 ease-in-out relative ${
                   job.current_stage === 'completed' || job.current_stage === 'failed' 
                     ? 'job-completing' 
+                    : job.current_stage === 'alert_created'
+                    ? 'job-alert-generated'
+                    : job.current_stage === 'analyzing' || job.current_stage === 'scraping'
+                    ? 'data-flowing'
                     : ''
                 }`}
                 style={{
-                  animationDelay: `${index * 100}ms`,
+                  animationDelay: `${index * 150}ms`,
                   animation: job.current_stage === 'completed' || job.current_stage === 'failed' 
                     ? 'slideOutFadeOut 3s ease-in forwards' 
-                    : 'slideInFadeIn 0.5s ease-out forwards'
+                    : 'slideInFadeIn 0.7s ease-out forwards'
                 }}
               >
                 <JobCard
@@ -611,7 +774,7 @@ const LiveDashboard = ({ user, userSubscription }) => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Started At</label>
-                  <p className="text-gray-900 dark:text-white">{new Date(selectedJobRun.started_at).toLocaleString()}</p>
+                  <p className="text-gray-900 dark:text-white">{formatLocalDateTime(selectedJobRun.started_at)}</p>
                 </div>
               </div>
               

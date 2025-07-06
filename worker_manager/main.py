@@ -330,6 +330,42 @@ class ScalableWorkerManager:
         except Exception as e:
             logger.warning(f"Failed to update job_run progress {job_run_id}: {e}")
 
+    async def broadcast_stage_update(self, task: JobTask, stage: str, stage_data: dict):
+        """Broadcast detailed stage updates for live dashboard visualization"""
+        try:
+            api_url = os.getenv("API_SERVICE_URL", "http://api_service:8000")
+            headers = {
+                "X-Internal-API-Key": os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production"),
+                "Content-Type": "application/json"
+            }
+            
+            # Enhanced stage update with rich details
+            stage_update = {
+                "run_id": task.job_run_id,
+                "job_id": task.job_id,
+                "job_name": task.job_name,
+                "source_url": task.source_url,
+                "current_stage": stage,
+                "stage_data": stage_data,
+                "timestamp": datetime.now().isoformat(),
+                "user_id": task.user_id
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{api_url}/jobs/execution-update",
+                    json=stage_update,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=5)
+                ) as response:
+                    if response.status == 200:
+                        logger.debug(f"🔄 Stage update '{stage}' broadcasted for {task.job_run_id}")
+                    else:
+                        logger.warning(f"Failed to broadcast stage update: {response.status}")
+                        
+        except Exception as e:
+            logger.warning(f"Error broadcasting stage update: {e}")
+
     async def broadcast_execution_update(self, job_run_id: str, sources_processed: int, 
                                        analysis_results: List[Dict] = None, alerts_generated: int = 0):
         """Broadcast job execution update to WebSocket clients"""
@@ -571,20 +607,73 @@ class ScalableWorkerManager:
             return None
     
     async def process_task_async(self, session: aiohttp.ClientSession, task: JobTask) -> dict or bool:
-            """Process a single task (job + source) asynchronously"""
+            """Process a single task (job + source) asynchronously with detailed stage tracking"""
+            import random
+            
             try:
-                logger.info(f"Processing task: {task.job_name} - {task.source_url}")
+                logger.info(f"🚀 STARTING TASK: {task.job_name} - {task.source_url}")
                 
-                # Scrape content
+                # 🎬 STAGE 1: INITIALIZING
+                await self.broadcast_stage_update(task, "initializing", {
+                    "message": f"Starting to process {task.source_url}",
+                    "current_source": task.source_url,
+                    "stage_icon": "🔄"
+                })
+                
+                # Strategic delay for visualization + backoff (3-5 seconds)
+                initialization_delay = random.uniform(3.0, 5.0)
+                await asyncio.sleep(initialization_delay)
+                logger.info(f"⏱️ Initialization delay: {initialization_delay:.1f}s")
+                
+                # 🎬 STAGE 2: SCRAPING
+                await self.broadcast_stage_update(task, "scraping", {
+                    "message": f"Fetching content from {task.source_url}",
+                    "current_source": task.source_url,
+                    "stage_icon": "🌐",
+                    "scraping_started": datetime.now().isoformat()
+                })
+                
+                # Scrape content with progress updates
                 scrape_result = await self.scrape_source_async(session, task.source_url)
                 if not scrape_result or not scrape_result.get('success'):
+                    await self.broadcast_stage_update(task, "failed", {
+                        "message": f"❌ Failed to scrape {task.source_url}",
+                        "error": "Scraping failed",
+                        "stage_icon": "❌"
+                    })
                     logger.warning(f"Failed to scrape {task.source_url}")
                     return False
+                
+                # Extract content preview for UI
+                content_preview = scrape_result.get('content', '')[:500] + "..." if len(scrape_result.get('content', '')) > 500 else scrape_result.get('content', '')
+                content_length = len(scrape_result.get('content', ''))
+                
+                await self.broadcast_stage_update(task, "scraping_complete", {
+                    "message": f"✅ Content fetched: {content_length} characters",
+                    "content_preview": content_preview,
+                    "content_length": content_length,
+                    "stage_icon": "📄",
+                    "scraping_completed": datetime.now().isoformat()
+                })
                 
                 # Store source data (non-blocking)
                 asyncio.create_task(self.store_source_data(task.job_run_id, task.source_url, scrape_result))
                 
-                # Analyze content
+                # Strategic delay before analysis
+                scraping_delay = random.uniform(2.0, 4.0)
+                await asyncio.sleep(scraping_delay)
+                logger.info(f"⏱️ Scraping-to-analysis delay: {scraping_delay:.1f}s")
+                
+                # 🎬 STAGE 3: ANALYZING
+                await self.broadcast_stage_update(task, "analyzing", {
+                    "message": f"🤖 AI analyzing content...",
+                    "content_length": content_length,
+                    "ai_prompt": task.prompt[:100] + "..." if len(task.prompt) > 100 else task.prompt,
+                    "stage_icon": "🧠",
+                    "analysis_started": datetime.now().isoformat()
+                })
+                
+                # Analyze content with AI
                 analysis_result = await self.analyze_content_async(
                     session, 
                     scrape_result['content'], 
@@ -592,13 +681,191 @@ class ScalableWorkerManager:
                 )
                 
                 if not analysis_result:
+                    await self.broadcast_stage_update(task, "failed", {
+                        "message": f"❌ AI analysis failed for {task.source_url}",
+                        "error": "Analysis failed",
+                        "stage_icon": "❌"
+                    })
                     logger.warning(f"Failed to analyze content from {task.source_url}")
                     return False
                 
-                # Check if alert should be generated
+                # Extract analysis details
                 relevance_score = analysis_result.get('relevance_score', 0)
+                ai_title = analysis_result.get('title', 'No title available')
+                ai_summary = analysis_result.get('summary', 'No summary available')
+                ai_reasoning = analysis_result.get('reasoning', 'No reasoning provided')
+                
+                await self.broadcast_stage_update(task, "analysis_complete", {
+                    "message": f"🎯 Analysis complete: Score {relevance_score}/{task.threshold_score}",
+                    "relevance_score": relevance_score,
+                    "threshold_score": task.threshold_score,
+                    "ai_title": ai_title,
+                    "ai_summary": ai_summary,
+                    "ai_reasoning": ai_reasoning,
+                    "stage_icon": "📊",
+                    "analysis_completed": datetime.now().isoformat()
+                })
                 
                 # Prepare detailed analysis info for tracking
+                analysis_info = {
+                    'source_url': task.source_url,
+                    'relevance_score': relevance_score,
+                    'title': ai_title,
+                    'summary': ai_summary,
+                    'reasoning': ai_reasoning,
+                    'threshold_score': task.threshold_score,
+                    'alert_generated': False,
+                    'processed_at': datetime.now().isoformat(),
+                    'content_preview': content_preview,
+                    'content_length': content_length,
+                    'processing_time_seconds': (datetime.now() - datetime.fromisoformat(task.started_at.replace('Z', '+00:00').replace('+00:00', ''))).total_seconds() if hasattr(task, 'started_at') else 0
+                }
+                
+                # Strategic delay before decision
+                analysis_delay = random.uniform(1.5, 3.0)
+                await asyncio.sleep(analysis_delay)
+                logger.info(f"⏱️ Analysis-to-decision delay: {analysis_delay:.1f}s")
+                
+                # 🎬 STAGE 4: DECISION MAKING
+                if relevance_score >= task.threshold_score:
+                    await self.broadcast_stage_update(task, "alert_evaluation", {
+                        "message": f"🚨 Score {relevance_score} exceeds threshold! Checking alert rules...",
+                        "relevance_score": relevance_score,
+                        "threshold_score": task.threshold_score,
+                        "stage_icon": "⚖️"
+                    })
+                    
+                    # Check alert cooldown and rate limiting
+                    if not await self.should_create_alert(task, analysis_result):
+                        await self.broadcast_stage_update(task, "alert_suppressed", {
+                            "message": f"🔕 Alert suppressed (cooldown/rate limiting)",
+                            "relevance_score": relevance_score,
+                            "suppressed_reason": "cooldown/rate limiting",
+                            "stage_icon": "🔕"
+                        })
+                        logger.info(f"Alert suppressed due to cooldown/rate limiting for {task.source_url}")
+                        analysis_info['alert_generated'] = False
+                        analysis_info['suppressed_reason'] = 'cooldown/rate limiting'
+                        return analysis_info
+                    
+                    # 🎬 STAGE 5: ALERT CREATION
+                    await self.broadcast_stage_update(task, "creating_alert", {
+                        "message": f"📝 Creating alert...",
+                        "relevance_score": relevance_score,
+                        "alert_title": ai_title,
+                        "stage_icon": "📝"
+                    })
+                    
+                    alert_data = {
+                        'job_id': task.job_id,
+                        'job_run_id': task.job_run_id,
+                        'source_url': task.source_url,
+                        'relevance_score': relevance_score,
+                        'title': ai_title,
+                        'content': ai_summary,
+                        'timestamp': datetime.now().isoformat(),
+                        'user_id': task.user_id
+                    }
+                    
+                    # Save alert to database
+                    try:
+                        api_url = os.getenv("API_SERVICE_URL", "http://api_service:8000")
+                        headers = {
+                            "X-Internal-API-Key": os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production"),
+                            "Content-Type": "application/json"
+                        }
+                        
+                        response = requests.post(f"{api_url}/alerts", json=alert_data, headers=headers, timeout=10)
+                        if response.status_code == 200:
+                            await self.broadcast_stage_update(task, "alert_created", {
+                                "message": f"🚨 ALERT CREATED! '{ai_title}'",
+                                "alert_title": ai_title,
+                                "alert_summary": ai_summary,
+                                "relevance_score": relevance_score,
+                                "stage_icon": "🚨"
+                            })
+                            logger.info(f"✅ Alert saved to database")
+                            await self.record_alert_created(task)
+                            analysis_info['alert_generated'] = True
+                            
+                            response_data = response.json()
+                            alert_data['id'] = response_data.get('alert_id')
+                            logger.info(f"Alert ID from database: {alert_data['id']}")
+                        else:
+                            await self.broadcast_stage_update(task, "alert_failed", {
+                                "message": f"❌ Failed to save alert",
+                                "error": f"Database save failed: {response.status_code}",
+                                "stage_icon": "❌"
+                            })
+                            logger.error(f"Failed to save alert to database: {response.status_code}")
+                            analysis_info['alert_generated'] = False
+                            analysis_info['error'] = f"Database save failed: {response.status_code}"
+                    except Exception as e:
+                        await self.broadcast_stage_update(task, "alert_failed", {
+                            "message": f"❌ Alert creation failed",
+                            "error": str(e),
+                            "stage_icon": "❌"
+                        })
+                        logger.error(f"Error saving alert to database: {e}")
+                        analysis_info['alert_generated'] = False
+                        analysis_info['error'] = f"Database save error: {e}"
+                    
+                    # Queue alert for notification service (only if successfully saved)
+                    if analysis_info.get('alert_generated'):
+                        self.redis_client.lpush("alert_queue", json.dumps(alert_data))
+                        logger.info(f"Alert queued for notification with ID: {alert_data.get('id')}")
+                    
+                    logger.info(f"🚨 ALERT GENERATED! {task.source_url} (score: {relevance_score})")
+                    
+                    # Store LLM analysis with alert info (non-blocking)
+                    asyncio.create_task(self.store_llm_analysis(
+                        task.job_run_id, task.source_url, analysis_result, 
+                        task.prompt, True
+                    ))
+                    
+                else:
+                    # Score below threshold
+                    await self.broadcast_stage_update(task, "below_threshold", {
+                        "message": f"📉 Score {relevance_score} below threshold {task.threshold_score}",
+                        "relevance_score": relevance_score,
+                        "threshold_score": task.threshold_score,
+                        "ai_title": ai_title,
+                        "ai_summary": ai_summary,
+                        "stage_icon": "📉"
+                    })
+                    logger.info(f"Score {relevance_score} below threshold {task.threshold_score}")
+                    analysis_info['alert_generated'] = False
+                    analysis_info['below_threshold'] = True
+                    
+                    # Store LLM analysis without alert (non-blocking)
+                    asyncio.create_task(self.store_llm_analysis(
+                        task.job_run_id, task.source_url, analysis_result, 
+                        task.prompt, False
+                    ))
+                
+                # 🎬 STAGE 6: FINALIZING
+                completion_delay = random.uniform(1.0, 2.0)
+                await asyncio.sleep(completion_delay)
+                
+                await self.broadcast_stage_update(task, "completed", {
+                    "message": f"✅ Task completed successfully",
+                    "final_score": relevance_score,
+                    "alert_generated": analysis_info.get('alert_generated', False),
+                    "processing_time": analysis_info.get('processing_time_seconds', 0),
+                    "stage_icon": "✅",
+                    "completed_at": datetime.now().isoformat()
+                })
+                
+                return analysis_info
+                    
+            except Exception as e:
+                await self.broadcast_stage_update(task, "error", {
+                    "message": f"💥 Task failed: {str(e)}",
+                    "error": str(e),
+                    "stage_icon": "💥"
+                })
+                logger.error(f"Error processing task {task.job_name} - {task.source_url}: {e}")
+                return False
                 analysis_info = {
                     'source_url': task.source_url,
                     'relevance_score': relevance_score,

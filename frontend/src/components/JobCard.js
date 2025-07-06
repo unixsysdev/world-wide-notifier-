@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatTimeAgoLocal } from '../utils/timeUtils';
 
 const JobCard = ({ job, onToggleExpansion, isExpanded }) => {
   const formatDuration = (seconds) => {
@@ -20,6 +21,7 @@ const JobCard = ({ job, onToggleExpansion, isExpanded }) => {
     }
   };
 
+  // Helper function for outcome colors (used in expanded details)
   const getOutcomeColor = (outcomeType) => {
     switch (outcomeType) {
       case 'success': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
@@ -36,18 +38,8 @@ const JobCard = ({ job, onToggleExpansion, isExpanded }) => {
     return minutes > 0 ? `~${minutes}m ${seconds}s` : `~${seconds}s`;
   };
 
-  const formatTimeAgo = (timestamp) => {
-    const now = new Date();
-    const time = new Date(timestamp);
-    const diffMs = now - time;
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMins / 60);
-    
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    return time.toLocaleDateString();
-  };
+  // Use timezone-aware time formatting
+  const formatTimeAgo = formatTimeAgoLocal;
 
   return (
     <div className={`border border-gray-200 dark:border-gray-600 rounded-lg p-5 relative overflow-hidden transition-all duration-700 ease-in-out transform ${
@@ -196,45 +188,99 @@ const JobCard = ({ job, onToggleExpansion, isExpanded }) => {
             Analysis Results ({job.analysis_details?.length || 0} processed)
           </h4>
           {job.analysis_details && job.analysis_details.length > 0 ? (
-            <div className="space-y-2 max-h-64 overflow-y-auto">
+            <div className="space-y-4 max-h-96 overflow-y-auto">
               {job.analysis_details.map((detail, index) => (
-                <div key={index} className="bg-white dark:bg-gray-700 rounded-lg p-3 border border-gray-100 dark:border-gray-600">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-gray-600 dark:text-gray-300 truncate flex-1 mr-4">
-                      🌐 {detail.source_url}
-                    </span>
-                    <div className="flex items-center space-x-2">
-                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${getOutcomeColor(detail.outcome_type)}`}>
-                        {detail.stage_outcome}
+                <div key={index} className="bg-white dark:bg-gray-700 rounded-xl p-4 border border-gray-100 dark:border-gray-600 shadow-sm hover:shadow-md transition-shadow">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1 mr-4">
+                      <div className="text-sm text-blue-600 dark:text-blue-300 font-mono bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded mb-2 break-all">
+                        🌐 {detail.source_url}
+                      </div>
+                      {detail.content_preview && (
+                        <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 p-2 rounded border mb-2 max-h-16 overflow-y-auto font-mono">
+                          {detail.content_preview}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end space-y-2">
+                      <span className={`text-xs px-3 py-1 rounded-full font-bold ${
+                        detail.relevance_score >= detail.threshold_score 
+                          ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' 
+                          : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+                      }`}>
+                        Score: {detail.relevance_score}/{detail.threshold_score}
                       </span>
                       {detail.alert_generated && (
-                        <span className="bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 text-xs px-2 py-1 rounded-full font-medium animate-pulse">
-                          🚨 Alert!
+                        <span className="bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 text-xs px-3 py-1 rounded-full font-bold animate-pulse">
+                          🚨 Alert Generated!
+                        </span>
+                      )}
+                      {detail.below_threshold && (
+                        <span className="bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-xs px-3 py-1 rounded-full font-medium">
+                          📉 Below Threshold
                         </span>
                       )}
                     </div>
                   </div>
-                  <div className="text-sm text-gray-700 dark:text-gray-300">
-                    <div className="font-medium">{detail.title}</div>
-                    <div className="text-gray-600 dark:text-gray-400 mt-1">{detail.summary}</div>
+                  
+                  <div className="space-y-3">
+                    {detail.title && (
+                      <div>
+                        <div className="text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-1">AI Title</div>
+                        <div className="text-sm font-semibold text-gray-900 dark:text-white">{detail.title}</div>
+                      </div>
+                    )}
+                    
+                    {detail.summary && (
+                      <div>
+                        <div className="text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-1">AI Summary</div>
+                        <div className="text-sm text-gray-700 dark:text-gray-300">{detail.summary}</div>
+                      </div>
+                    )}
+                    
+                    {detail.reasoning && (
+                      <div>
+                        <div className="text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-1">AI Reasoning</div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400 italic bg-gray-50 dark:bg-gray-800 p-2 rounded border">
+                          {detail.reasoning}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {detail.content_length && (
+                      <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-200 dark:border-gray-600">
+                        <span>📄 Content: {detail.content_length.toLocaleString()} chars</span>
+                        {detail.processed_at && <span>⏰ {formatTimeAgo(detail.processed_at)}</span>}
+                        {detail.processing_time_seconds && <span>⚡ {detail.processing_time_seconds.toFixed(1)}s</span>}
+                      </div>
+                    )}
                   </div>
-                  {detail.processed_at && (
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                      Processed: {formatTimeAgo(detail.processed_at)}
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
           ) : (
-            <div className="text-center py-6">
+            <div className="text-center py-8">
               <div className="text-gray-400 dark:text-gray-500 text-sm">
-                <span className="text-2xl block mb-2 animate-spin">⚡</span>
-                {job.current_stage === 'initializing' && 'Initializing job execution...'}
-                {job.current_stage === 'scraping' && 'Scraping sources for content...'}
-                {job.current_stage === 'analyzing' && 'Analyzing content with AI...'}
-                {job.current_stage === 'finalizing' && 'Finalizing results...'}
-                {!['initializing', 'scraping', 'analyzing', 'finalizing'].includes(job.current_stage) && 'Processing job data...'}
+                <span className={`text-4xl block mb-3 ${
+                  job.current_stage === 'analyzing' ? 'animate-spin' : 
+                  job.current_stage === 'scraping' ? 'animate-pulse' : ''
+                }`}>
+                  {job.current_stage === 'initializing' && '🔄'}
+                  {job.current_stage === 'scraping' && '🌐'}
+                  {job.current_stage === 'analyzing' && '🧠'}
+                  {job.current_stage === 'finalizing' && '🏁'}
+                  {!['initializing', 'scraping', 'analyzing', 'finalizing'].includes(job.current_stage) && '⚡'}
+                </span>
+                <div className="font-medium text-base mb-2">
+                  {job.current_stage === 'initializing' && 'Initializing job execution...'}
+                  {job.current_stage === 'scraping' && 'Scraping sources for content...'}
+                  {job.current_stage === 'analyzing' && 'AI analyzing content for insights...'}
+                  {job.current_stage === 'finalizing' && 'Finalizing results and generating alerts...'}
+                  {!['initializing', 'scraping', 'analyzing', 'finalizing'].includes(job.current_stage) && 'Processing job data...'}
+                </div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  Analysis results will appear here as sources are processed
+                </div>
               </div>
             </div>
           )}
