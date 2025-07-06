@@ -141,36 +141,57 @@ const LiveDashboard = ({ user, userSubscription }) => {
   const fetchDashboardStats = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
-      const headers = { Authorization: `Bearer ${token}` };
+      if (!token) {
+        console.log('🔑 No auth token available for dashboard stats');
+        return;
+      }
       
-      const response = await axios.get(`${API_URL}/dashboard/live-stats`, { headers });
+      const response = await axios.get(`${API_URL}/dashboard/live-stats`);
       setDashboardData(response.data);
     } catch (error) {
-      console.error('Error fetching dashboard stats:', error);
+      if (error.response?.status === 401) {
+        console.log('🔑 Auth required for dashboard stats');
+      } else {
+        console.error('Error fetching dashboard stats:', error);
+      }
     }
   }, []);
 
   const fetchRunningJobs = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
-      const headers = { Authorization: `Bearer ${token}` };
+      if (!token) {
+        console.log('🔑 No auth token available for running jobs');
+        return;
+      }
       
-      const response = await axios.get(`${API_URL}/dashboard/running-jobs`, { headers });
+      const response = await axios.get(`${API_URL}/dashboard/running-jobs`);
       setRunningJobs(response.data.running_jobs || []);
     } catch (error) {
-      console.error('Error fetching running jobs:', error);
+      if (error.response?.status === 401) {
+        console.log('🔑 Auth required for running jobs');
+      } else {
+        console.error('Error fetching running jobs:', error);
+      }
     }
   }, []);
 
   const fetchExecutionHistory = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
-      const headers = { Authorization: `Bearer ${token}` };
+      if (!token) {
+        console.log('🔑 No auth token available for execution history');
+        return;
+      }
       
-      const response = await axios.get(`${API_URL}/dashboard/job-execution-history`, { headers, params: { limit: 10 } });
+      const response = await axios.get(`${API_URL}/dashboard/job-execution-history`, { params: { limit: 10 } });
       setExecutionHistory(response.data.execution_history || []);
     } catch (error) {
-      console.error('Error fetching execution history:', error);
+      if (error.response?.status === 401) {
+        console.log('🔑 Auth required for execution history');
+      } else {
+        console.error('Error fetching execution history:', error);
+      }
     }
   }, []);
 

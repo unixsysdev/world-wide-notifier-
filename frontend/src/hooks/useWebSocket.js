@@ -11,12 +11,15 @@ export const useWebSocket = (user, onMessage) => {
   const reconnectAttempts = useRef(0);
 
   const connect = useCallback(() => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      console.log('👤 No user ID available for WebSocket connection');
+      return;
+    }
 
     try {
       const token = localStorage.getItem('token');
       if (!token) {
-        console.log('No auth token available for WebSocket connection');
+        console.log('🔑 No auth token available for WebSocket connection');
         setConnectionStatus('No auth token');
         return;
       }
