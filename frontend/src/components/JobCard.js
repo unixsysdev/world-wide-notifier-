@@ -1,27 +1,49 @@
 import React from 'react';
 import { formatTimeAgoLocal } from '../utils/timeUtils';
 
-const JobCard = ({ job, onToggleExpansion, isExpanded }) => {
+const JobCard = ({ job, onToggleExpansion, isExpanded, onManualRemove }) => {
   const formatDuration = (seconds) => {
+    // Handle invalid or missing values
+    if (!seconds || seconds < 0) {
+      return '0:00';
+    }
+    
+    // Handle extremely large values (more than 24 hours) - likely stuck jobs
+    if (seconds > 86400) {
+      const hours = Math.floor(seconds / 3600);
+      const mins = Math.floor((seconds % 3600) / 60);
+      return `${hours}:${mins.toString().padStart(2, '0')}:00`;
+    }
+    
+    // Normal case: under 24 hours
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+  };;
 
   const getStageColor = (stage) => {
     switch (stage) {
       case 'initializing': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
       case 'scraping': return 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200';
+      case 'scraping_complete': return 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200';
       case 'analyzing': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+      case 'analysis_complete': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+      case 'alert_evaluation': return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
+      case 'creating_alert': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+      case 'alert_created': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+      case 'alert_suppressed': return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
+      case 'alert_failed': return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
+      case 'below_threshold': return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
       case 'finalizing': return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200';
-      case 'processing': return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
       case 'completed': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
       case 'failed': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+      case 'error': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+      case 'processing': return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
       default: return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
     }
   };
 
-  // Helper function for outcome colors (used in expanded details)
+  // eslint-disable-next-line no-unused-vars
   const getOutcomeColor = (outcomeType) => {
     switch (outcomeType) {
       case 'success': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
@@ -36,6 +58,48 @@ const JobCard = ({ job, onToggleExpansion, isExpanded }) => {
     const minutes = Math.floor(estimation.estimated_remaining_seconds / 60);
     const seconds = estimation.estimated_remaining_seconds % 60;
     return minutes > 0 ? `~${minutes}m ${seconds}s` : `~${seconds}s`;
+  };
+
+  const getStageIcon = (stage) => {
+    const stageIcons = {
+      'initializing': '🔄',
+      'scraping': '🌐',
+      'scraping_complete': '📄',
+      'analyzing': '🧠',
+      'analysis_complete': '📊',
+      'alert_evaluation': '⚖️',
+      'creating_alert': '📝',
+      'alert_created': '🚨',
+      'alert_suppressed': '🔕',
+      'alert_failed': '❌',
+      'below_threshold': '📉',
+      'finalizing': '⏰',
+      'completed': '✅',
+      'failed': '💥',
+      'error': '💥'
+    };
+    return stageIcons[stage] || '⚪';
+  };
+
+  const getStageLabel = (stage) => {
+    const stageLabels = {
+      'initializing': 'Initializing',
+      'scraping': 'Scraping',
+      'scraping_complete': 'Scraping Complete',
+      'analyzing': 'Analyzing',
+      'analysis_complete': 'Analysis Complete',
+      'alert_evaluation': 'Evaluating Alerts',
+      'creating_alert': 'Creating Alert',
+      'alert_created': 'Alert Created',
+      'alert_suppressed': 'Alert Suppressed',
+      'alert_failed': 'Alert Failed',
+      'below_threshold': 'Below Threshold',
+      'finalizing': 'Finalizing',
+      'completed': 'Completed',
+      'failed': 'Failed',
+      'error': 'Error'
+    };
+    return stageLabels[stage] || stage;
   };
 
   // Use timezone-aware time formatting
@@ -66,8 +130,30 @@ const JobCard = ({ job, onToggleExpansion, isExpanded }) => {
               }`}>
                 {job.current_stage === 'completed' && '✅ '}
                 {job.current_stage === 'failed' && '❌ '}
+                {job.current_stage === 'error' && '💥 '}
                 {job.current_stage === 'finalizing' && '🏁 '}
-                {job.current_stage.charAt(0).toUpperCase() + job.current_stage.slice(1)}
+                {job.current_stage === 'alert_evaluation' && '⚖️ '}
+                {job.current_stage === 'creating_alert' && '🚨 '}
+                {(() => {
+                  const stageNames = {
+                    'initializing': 'Initializing',
+                    'scraping': 'Scraping',
+                    'scraping_complete': 'Scraping Complete',
+                    'analyzing': 'Analyzing',
+                    'analysis_complete': 'Analysis Complete',
+                    'alert_evaluation': 'Evaluating',
+                    'creating_alert': 'Creating Alert',
+                    'alert_created': 'Alert Created',
+                    'alert_suppressed': 'Alert Suppressed',
+                    'alert_failed': 'Alert Failed',
+                    'below_threshold': 'Below Threshold',
+                    'finalizing': 'Finalizing',
+                    'completed': 'Completed',
+                    'failed': 'Failed',
+                    'error': 'Error'
+                  };
+                  return stageNames[job.current_stage] || job.current_stage.charAt(0).toUpperCase() + job.current_stage.slice(1);
+                })()}
               </span>
               {job.stage_details?.current_operation && (
                 <span className="text-xs text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-700 px-2 py-1 rounded-full">
@@ -76,14 +162,10 @@ const JobCard = ({ job, onToggleExpansion, isExpanded }) => {
               )}
             </div>
             
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600 dark:text-gray-400 mb-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm text-gray-600 dark:text-gray-400 mb-3">
               <div className="flex items-center space-x-1">
                 <span>⏱️</span>
                 <span>Runtime: {formatDuration(job.runtime_seconds)}</span>
-              </div>
-              <div className="flex items-center space-x-1">
-                <span>🌐</span>
-                <span>Sources: {job.sources_processed}/{job.sources_total}</span>
               </div>
               <div className="flex items-center space-x-1">
                 <span>🚨</span>
@@ -91,7 +173,7 @@ const JobCard = ({ job, onToggleExpansion, isExpanded }) => {
               </div>
               <div className="flex items-center space-x-1">
                 <span>📊</span>
-                <span>{job.completion_percentage}% complete</span>
+                <span>{Math.min(100, Math.max(0, job.completion_percentage || 0))}% complete</span>
               </div>
             </div>
 
@@ -100,7 +182,7 @@ const JobCard = ({ job, onToggleExpansion, isExpanded }) => {
               <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-1">
                 <span>Progress</span>
                 <div className="flex items-center space-x-2">
-                  <span>{job.completion_percentage}%</span>
+                  <span>{Math.min(100, Math.max(0, job.completion_percentage || 0))}%</span>
                   {job.estimated_completion && (
                     <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded">
                       ETA: {formatEstimatedTime(job.estimated_completion)}
@@ -110,13 +192,16 @@ const JobCard = ({ job, onToggleExpansion, isExpanded }) => {
               </div>
               <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-3 relative">
                 <div
-                  className="bg-gradient-to-r from-blue-500 via-indigo-600 to-purple-600 h-3 rounded-full transition-all duration-500 relative overflow-hidden"
-                  style={{ width: `${job.completion_percentage}%` }}
+                  className="bg-gradient-to-r from-blue-500 via-indigo-600 to-purple-600 h-3 rounded-full transition-all duration-1000 ease-out relative overflow-hidden"
+                  style={{ width: `${Math.min(100, Math.max(0, job.completion_percentage || 0))}%` }}
                 >
                   <div className="absolute inset-0 bg-white opacity-30 animate-pulse"></div>
                 </div>
                 {/* Stage markers */}
                 <div className="absolute top-0 left-0 right-0 h-3 flex">
+                  <div className="flex-1 border-r border-white border-opacity-50"></div>
+                  <div className="flex-1 border-r border-white border-opacity-50"></div>
+                  <div className="flex-1 border-r border-white border-opacity-50"></div>
                   <div className="flex-1 border-r border-white border-opacity-50"></div>
                   <div className="flex-1 border-r border-white border-opacity-50"></div>
                   <div className="flex-1"></div>
@@ -126,27 +211,54 @@ const JobCard = ({ job, onToggleExpansion, isExpanded }) => {
                 <span>Init</span>
                 <span>Scraping</span>
                 <span>Analyzing</span>
+                <span>Evaluating</span>
+                <span>Alerts</span>
                 <span>Done</span>
               </div>
             </div>
 
+            {/* Current Stage Display */}
+            <div className="mb-3 p-2 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
+              <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Current Stage:</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400 flex items-center space-x-2">
+                <span className="text-lg">{getStageIcon(job.current_stage)}</span>
+                <span className="capitalize">{getStageLabel(job.current_stage)}</span>
+                {job.stage_data?.message && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    - {job.stage_data.message}
+                  </span>
+                )}
+              </div>
+            </div>
+            
             {/* Current source being processed */}
-            {job.stage_details?.current_source && (
+            {(job.stage_details?.current_source || job.source_url) && (
               <div className="mb-3 p-2 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
-                <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Currently Processing:</div>
+                <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Processing:</div>
                 <div className="text-sm text-gray-600 dark:text-gray-400 truncate">
-                  🌐 {job.stage_details.current_source}
+                  🌐 {job.stage_details?.current_source || job.source_url}
                 </div>
               </div>
             )}
           </div>
           
-          <button
-            onClick={() => onToggleExpansion(job.run_id)}
-            className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 font-medium text-sm whitespace-nowrap bg-white dark:bg-gray-700 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 hover:shadow-md transition-all"
-          >
-            {isExpanded ? '🔼 Hide Details' : '🔽 Show Details'}
-          </button>
+          <div className="flex space-x-2">
+            <button
+              onClick={() => onToggleExpansion(job.run_id)}
+              className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 font-medium text-sm whitespace-nowrap bg-white dark:bg-gray-700 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 hover:shadow-md transition-all"
+            >
+              {isExpanded ? '🔼 Hide Details' : '🔽 Show Details'}
+            </button>
+            
+            {(job.current_stage === 'finalizing' || job.current_stage === 'failed' || job.current_stage === 'error') && onManualRemove && (
+              <button
+                onClick={() => onManualRemove(job.run_id)}
+                className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200 font-medium text-sm whitespace-nowrap bg-white dark:bg-gray-700 px-3 py-2 rounded-lg border border-red-200 dark:border-red-600 hover:shadow-md transition-all"
+              >
+                🗑️ Remove
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -163,7 +275,7 @@ const JobCard = ({ job, onToggleExpansion, isExpanded }) => {
               <div className="space-y-1 text-sm">
                 <div><span className="font-medium">Threshold:</span> {job.threshold_score}</div>
                 <div><span className="font-medium">Prompt:</span> {job.job_prompt}</div>
-                <div><span className="font-medium">Sources Total:</span> {job.sources_total}</div>
+
               </div>
             </div>
 
@@ -182,6 +294,52 @@ const JobCard = ({ job, onToggleExpansion, isExpanded }) => {
               </div>
             </div>
           </div>
+
+          {/* Stage-specific Details */}
+          {job.stage_data && (
+            <div className="mb-4 bg-white dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
+              <h5 className="font-medium text-gray-900 dark:text-white mb-2 flex items-center">
+                <span className="mr-2">🎭</span>
+                Current Stage: {job.current_stage}
+              </h5>
+              <div className="space-y-2 text-sm">
+                {job.stage_data.message && (
+                  <div className="flex items-start space-x-2">
+                    <span className="font-medium text-gray-600 dark:text-gray-400">Status:</span>
+                    <span className="text-gray-700 dark:text-gray-300">{job.stage_data.message}</span>
+                  </div>
+                )}
+                {job.stage_data.current_source && (
+                  <div className="flex items-start space-x-2">
+                    <span className="font-medium text-gray-600 dark:text-gray-400">Processing:</span>
+                    <span className="text-gray-700 dark:text-gray-300 truncate">{job.stage_data.current_source}</span>
+                  </div>
+                )}
+                {job.stage_data.content_length && (
+                  <div className="flex items-start space-x-2">
+                    <span className="font-medium text-gray-600 dark:text-gray-400">Content Size:</span>
+                    <span className="text-gray-700 dark:text-gray-300">{job.stage_data.content_length} chars</span>
+                  </div>
+                )}
+                {job.stage_data.analysis_score && (
+                  <div className="flex items-start space-x-2">
+                    <span className="font-medium text-gray-600 dark:text-gray-400">Score:</span>
+                    <span className={`font-medium ${job.stage_data.analysis_score >= 75 ? 'text-green-600' : job.stage_data.analysis_score >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+                      {job.stage_data.analysis_score}/100
+                    </span>
+                  </div>
+                )}
+                {job.stage_data.alert_generated !== undefined && (
+                  <div className="flex items-start space-x-2">
+                    <span className="font-medium text-gray-600 dark:text-gray-400">Alert:</span>
+                    <span className={`font-medium ${job.stage_data.alert_generated ? 'text-green-600' : 'text-gray-600'}`}>
+                      {job.stage_data.alert_generated ? '✅ Generated' : '❌ None'}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           <h4 className="font-medium text-gray-900 dark:text-white mb-3 flex items-center">
             <span className="mr-2">🔍</span>

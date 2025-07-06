@@ -40,6 +40,9 @@ class ScalableWorkerManager:
         self.worker_id = str(uuid.uuid4())[:8]
         self.running = True
         
+        # Task tracking
+        self.active_tasks = {}  # job_run_id -> JobTask
+        
         # Scalability settings
         self.max_concurrent_jobs = int(os.getenv("MAX_CONCURRENT_JOBS", "50"))
         self.max_concurrent_sources = int(os.getenv("MAX_CONCURRENT_SOURCES", "10"))
@@ -339,13 +342,35 @@ class ScalableWorkerManager:
                 "Content-Type": "application/json"
             }
             
-            # Enhanced stage update with rich details
+            # Calculate completion percentage based on stage
+            stage_percentages = {
+                'initializing': 10,
+                'scraping': 25,
+                'scraping_complete': 40,
+                'analyzing': 50,
+                'analysis_complete': 60,
+                'alert_evaluation': 70,
+                'creating_alert': 85,
+                'alert_created': 90,
+                'alert_suppressed': 90,
+                'alert_failed': 90,
+                'below_threshold': 90,
+                'finalizing': 95,
+                'completed': 100,
+                'failed': 100,
+                'error': 100
+            }
+            
+            completion_percentage = stage_percentages.get(stage, 0)
+            
+            # Enhanced stage update with rich details and progress
             stage_update = {
                 "run_id": task.job_run_id,
                 "job_id": task.job_id,
                 "job_name": task.job_name,
                 "source_url": task.source_url,
                 "current_stage": stage,
+                "completion_percentage": completion_percentage,
                 "stage_data": stage_data,
                 "timestamp": datetime.now().isoformat(),
                 "user_id": task.user_id
@@ -366,10 +391,81 @@ class ScalableWorkerManager:
         except Exception as e:
             logger.warning(f"Error broadcasting stage update: {e}")
 
+    async def broadcast_comprehensive_update(self, task: JobTask, stage: str, stage_data: dict, 
+                                           sources_processed: int, analysis_results: List[Dict] = None, alerts_generated: int = 0):
+        """Broadcast comprehensive job update with stage and analysis details"""
+        try:
+            api_url = os.getenv("API_SERVICE_URL", "http://api_service:8000")
+            headers = {
+                "X-Internal-API-Key": os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production"),
+                "Content-Type": "application/json"
+            }
+            
+            # Calculate completion percentage based on stage
+            stage_percentages = {
+                'initializing': 10,
+                'scraping': 25,
+                'scraping_complete': 40,
+                'analyzing': 50,
+                'analysis_complete': 60,
+                'alert_evaluation': 70,
+                'creating_alert': 85,
+                'alert_created': 90,
+                'alert_suppressed': 90,
+                'alert_failed': 90,
+                'below_threshold': 90,
+                'finalizing': 95,
+                'completed': 100,
+                'failed': 100,
+                'error': 100
+            }
+            
+            completion_percentage = stage_percentages.get(stage, 0)
+            
+            # Comprehensive update with all information
+            update_data = {
+                "run_id": task.job_run_id,
+                "job_id": task.job_id,
+                "job_name": task.job_name,
+                "source_url": task.source_url,
+                "current_stage": stage,
+                "completion_percentage": completion_percentage,
+                "stage_data": stage_data,
+                "sources_processed": sources_processed,
+                "sources_total": 1,  # Single source jobs
+                "alerts_generated": alerts_generated,
+                "analysis_details": analysis_results[-10:] if analysis_results else [],
+                "last_updated": datetime.now().isoformat(),
+                "timestamp": datetime.now().isoformat(),
+                "user_id": task.user_id
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{api_url}/jobs/execution-update",
+                    json=update_data,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=5)
+                ) as response:
+                    if response.status == 200:
+                        logger.debug(f"✅ Broadcasted comprehensive update for {task.job_run_id}")
+                    else:
+                        logger.warning(f"Failed to broadcast comprehensive update: {response.status}")
+                        
+        except Exception as e:
+            logger.error(f"Failed to broadcast comprehensive update: {e}")
+
     async def broadcast_execution_update(self, job_run_id: str, sources_processed: int, 
                                        analysis_results: List[Dict] = None, alerts_generated: int = 0):
         """Broadcast job execution update to WebSocket clients"""
         try:
+            # Get task info for this job run
+            task_info = None
+            for task in self.active_tasks.values():
+                if task.job_run_id == job_run_id:
+                    task_info = task
+                    break
+            
             api_url = os.getenv("API_SERVICE_URL", "http://api_service:8000")
             headers = {
                 "X-Internal-API-Key": os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production"),
@@ -378,10 +474,12 @@ class ScalableWorkerManager:
             
             execution_data = {
                 "run_id": job_run_id,
+                "job_id": task_info.job_id if task_info else None,
+                "job_name": task_info.job_name if task_info else None,
                 "sources_processed": sources_processed,
                 "alerts_generated": alerts_generated,
                 "last_updated": datetime.now().isoformat(),
-                "analysis_details": analysis_results[-5:] if analysis_results else []  # Last 5 for live updates
+                "analysis_details": analysis_results[-10:] if analysis_results else []  # Last 10 for live updates
             }
             
             async with aiohttp.ClientSession() as session:
@@ -498,6 +596,36 @@ class ScalableWorkerManager:
             
         except Exception as e:
             logger.error(f"Error setting acknowledgment cooldown: {e}")    
+    async def record_failed_job(self, task: JobTask, failure_stage: str, error_message: str, error_details: dict) -> None:
+        """Record a failed job for investigation and potential retry"""
+        try:
+            DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://monitoring_user:monitoring_pass@localhost:5432/monitoring_db")
+            conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+            conn.autocommit = True
+            
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO failed_jobs (
+                        job_id, job_run_id, user_id, job_name, source_url,
+                        failure_stage, error_message, error_details
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    task.job_id,
+                    task.job_run_id,
+                    task.user_id,
+                    task.job_name,
+                    task.source_url,
+                    failure_stage,
+                    error_message,
+                    json.dumps(error_details)
+                ))
+            
+            conn.close()
+            logger.info(f"📝 Recorded failed job: {task.job_name} - {failure_stage} - {error_message}")
+            
+        except Exception as e:
+            logger.error(f"Failed to record failed job: {e}")
+
     async def record_alert_created(self, task: JobTask) -> None:
         """Record that an alert was created for cooldown and rate limiting"""
         try:
@@ -613,12 +741,22 @@ class ScalableWorkerManager:
             try:
                 logger.info(f"🚀 STARTING TASK: {task.job_name} - {task.source_url}")
                 
+                # Add task to active tasks tracking
+                self.active_tasks[task.job_run_id] = task
+                
                 # 🎬 STAGE 1: INITIALIZING
-                await self.broadcast_stage_update(task, "initializing", {
-                    "message": f"Starting to process {task.source_url}",
-                    "current_source": task.source_url,
-                    "stage_icon": "🔄"
-                })
+                await self.broadcast_comprehensive_update(
+                    task, 
+                    "initializing",
+                    {
+                        "message": f"Starting to process {task.source_url}",
+                        "current_source": task.source_url,
+                        "stage_icon": "🔄"
+                    },
+                    0,  # No sources processed yet
+                    [],  # No analysis results yet
+                    0  # No alerts yet
+                )
                 
                 # Strategic delay for visualization + backoff (3-5 seconds)
                 initialization_delay = random.uniform(3.0, 5.0)
@@ -626,35 +764,69 @@ class ScalableWorkerManager:
                 logger.info(f"⏱️ Initialization delay: {initialization_delay:.1f}s")
                 
                 # 🎬 STAGE 2: SCRAPING
-                await self.broadcast_stage_update(task, "scraping", {
-                    "message": f"Fetching content from {task.source_url}",
-                    "current_source": task.source_url,
-                    "stage_icon": "🌐",
-                    "scraping_started": datetime.now().isoformat()
-                })
+                await self.broadcast_comprehensive_update(
+                    task, 
+                    "scraping",
+                    {
+                        "message": f"Fetching content from {task.source_url}",
+                        "current_source": task.source_url,
+                        "stage_icon": "🌐",
+                        "scraping_started": datetime.now().isoformat()
+                    },
+                    0,  # No sources processed yet
+                    [],  # No analysis results yet
+                    0  # No alerts yet
+                )
                 
                 # Scrape content with progress updates
                 scrape_result = await self.scrape_source_async(session, task.source_url)
                 if not scrape_result or not scrape_result.get('success'):
-                    await self.broadcast_stage_update(task, "failed", {
-                        "message": f"❌ Failed to scrape {task.source_url}",
-                        "error": "Scraping failed",
-                        "stage_icon": "❌"
+                    error_msg = scrape_result.get('error', 'Scraping failed') if scrape_result else 'Scraping service unavailable'
+                    await self.broadcast_comprehensive_update(
+                        task, 
+                        "failed",
+                        {
+                            "message": f"❌ Failed to scrape {task.source_url}",
+                            "error": error_msg,
+                            "stage_icon": "❌",
+                            "failed_at": datetime.now().isoformat()
+                        },
+                        0,  # No sources processed
+                        [],  # No analysis results
+                        0  # No alerts generated
+                    )
+                    logger.warning(f"Failed to scrape {task.source_url}: {error_msg}")
+                    
+                    # Record failed job for investigation
+                    await self.record_failed_job(task, "scraping", error_msg, {
+                        "scrape_result": scrape_result,
+                        "source_url": task.source_url
                     })
-                    logger.warning(f"Failed to scrape {task.source_url}")
+                    
+                    # Remove task from active tracking
+                    if task.job_run_id in self.active_tasks:
+                        del self.active_tasks[task.job_run_id]
+                    
                     return False
                 
                 # Extract content preview for UI
                 content_preview = scrape_result.get('content', '')[:500] + "..." if len(scrape_result.get('content', '')) > 500 else scrape_result.get('content', '')
                 content_length = len(scrape_result.get('content', ''))
                 
-                await self.broadcast_stage_update(task, "scraping_complete", {
-                    "message": f"✅ Content fetched: {content_length} characters",
-                    "content_preview": content_preview,
-                    "content_length": content_length,
-                    "stage_icon": "📄",
-                    "scraping_completed": datetime.now().isoformat()
-                })
+                await self.broadcast_comprehensive_update(
+                    task, 
+                    "scraping_complete",
+                    {
+                        "message": f"✅ Content fetched: {content_length} characters",
+                        "content_preview": content_preview,
+                        "content_length": content_length,
+                        "stage_icon": "📄",
+                        "scraping_completed": datetime.now().isoformat()
+                    },
+                    0,  # No sources fully processed yet
+                    [],  # No analysis results yet
+                    0  # No alerts yet
+                )
                 
                 # Store source data (non-blocking)
                 asyncio.create_task(self.store_source_data(task.job_run_id, task.source_url, scrape_result))
@@ -665,13 +837,20 @@ class ScalableWorkerManager:
                 logger.info(f"⏱️ Scraping-to-analysis delay: {scraping_delay:.1f}s")
                 
                 # 🎬 STAGE 3: ANALYZING
-                await self.broadcast_stage_update(task, "analyzing", {
-                    "message": f"🤖 AI analyzing content...",
-                    "content_length": content_length,
-                    "ai_prompt": task.prompt[:100] + "..." if len(task.prompt) > 100 else task.prompt,
-                    "stage_icon": "🧠",
-                    "analysis_started": datetime.now().isoformat()
-                })
+                await self.broadcast_comprehensive_update(
+                    task, 
+                    "analyzing",
+                    {
+                        "message": f"🤖 AI analyzing content...",
+                        "content_length": content_length,
+                        "ai_prompt": task.prompt[:100] + "..." if len(task.prompt) > 100 else task.prompt,
+                        "stage_icon": "🧠",
+                        "analysis_started": datetime.now().isoformat()
+                    },
+                    1,  # This source is being analyzed
+                    [],  # No analysis results yet
+                    0  # No alerts yet
+                )
                 
                 # Analyze content with AI
                 analysis_result = await self.analyze_content_async(
@@ -680,13 +859,34 @@ class ScalableWorkerManager:
                     task.prompt
                 )
                 
-                if not analysis_result:
-                    await self.broadcast_stage_update(task, "failed", {
-                        "message": f"❌ AI analysis failed for {task.source_url}",
-                        "error": "Analysis failed",
-                        "stage_icon": "❌"
+                if not analysis_result or not analysis_result.get('success', False):
+                    error_msg = analysis_result.get('error', 'Analysis failed') if analysis_result else 'Analysis service unavailable'
+                    await self.broadcast_comprehensive_update(
+                        task, 
+                        "failed",
+                        {
+                            "message": f"❌ AI analysis failed for {task.source_url}",
+                            "error": error_msg,
+                            "stage_icon": "❌",
+                            "failed_at": datetime.now().isoformat()
+                        },
+                        0,  # No sources processed
+                        [],  # No analysis results
+                        0  # No alerts generated
+                    )
+                    logger.warning(f"Failed to analyze content from {task.source_url}: {error_msg}")
+                    
+                    # Record failed job for investigation
+                    await self.record_failed_job(task, "analysis", error_msg, {
+                        "analysis_result": analysis_result,
+                        "content_length": len(scrape_result.get('content', '')) if scrape_result else 0,
+                        "prompt": task.prompt
                     })
-                    logger.warning(f"Failed to analyze content from {task.source_url}")
+                    
+                    # Remove task from active tracking
+                    if task.job_run_id in self.active_tasks:
+                        del self.active_tasks[task.job_run_id]
+                    
                     return False
                 
                 # Extract analysis details
@@ -695,16 +895,47 @@ class ScalableWorkerManager:
                 ai_summary = analysis_result.get('summary', 'No summary available')
                 ai_reasoning = analysis_result.get('reasoning', 'No reasoning provided')
                 
-                await self.broadcast_stage_update(task, "analysis_complete", {
-                    "message": f"🎯 Analysis complete: Score {relevance_score}/{task.threshold_score}",
-                    "relevance_score": relevance_score,
-                    "threshold_score": task.threshold_score,
-                    "ai_title": ai_title,
-                    "ai_summary": ai_summary,
-                    "ai_reasoning": ai_reasoning,
-                    "stage_icon": "📊",
-                    "analysis_completed": datetime.now().isoformat()
-                })
+                # Check if analysis was successful
+                if not analysis_result.get('success', True):
+                    error_msg = analysis_result.get('error', 'Analysis processing failed')
+                    await self.broadcast_comprehensive_update(
+                        task, 
+                        "failed",
+                        {
+                            "message": f"❌ AI analysis failed: {error_msg}",
+                            "error": error_msg,
+                            "stage_icon": "❌",
+                            "failed_at": datetime.now().isoformat()
+                        },
+                        0,  # No sources processed
+                        [],  # No analysis results
+                        0  # No alerts generated
+                    )
+                    logger.warning(f"Analysis failed for {task.source_url}: {error_msg}")
+                    
+                    # Remove task from active tracking
+                    if task.job_run_id in self.active_tasks:
+                        del self.active_tasks[task.job_run_id]
+                    
+                    return False
+                
+                await self.broadcast_comprehensive_update(
+                    task, 
+                    "analysis_complete",
+                    {
+                        "message": f"🎯 Analysis complete: Score {relevance_score}/{task.threshold_score}",
+                        "relevance_score": relevance_score,
+                        "threshold_score": task.threshold_score,
+                        "ai_title": ai_title,
+                        "ai_summary": ai_summary,
+                        "ai_reasoning": ai_reasoning,
+                        "stage_icon": "📊",
+                        "analysis_completed": datetime.now().isoformat()
+                    },
+                    1,  # This source completed analysis
+                    [],  # Will add analysis_info after it's created
+                    0  # No alerts yet
+                )
                 
                 # Prepare detailed analysis info for tracking
                 analysis_info = {
@@ -721,6 +952,16 @@ class ScalableWorkerManager:
                     'processing_time_seconds': (datetime.now() - datetime.fromisoformat(task.started_at.replace('Z', '+00:00').replace('+00:00', ''))).total_seconds() if hasattr(task, 'started_at') else 0
                 }
                 
+                # Immediately broadcast analysis result to frontend with details
+                await self.broadcast_comprehensive_update(
+                    task, 
+                    "analysis_complete",
+                    {"analysis_score": relevance_score, "content_length": content_length},
+                    1,  # This source just completed analysis
+                    [analysis_info],  # Send the analysis result
+                    0  # No alerts yet
+                )
+                
                 # Strategic delay before decision
                 analysis_delay = random.uniform(1.5, 3.0)
                 await asyncio.sleep(analysis_delay)
@@ -728,33 +969,105 @@ class ScalableWorkerManager:
                 
                 # 🎬 STAGE 4: DECISION MAKING
                 if relevance_score >= task.threshold_score:
-                    await self.broadcast_stage_update(task, "alert_evaluation", {
-                        "message": f"🚨 Score {relevance_score} exceeds threshold! Checking alert rules...",
-                        "relevance_score": relevance_score,
-                        "threshold_score": task.threshold_score,
-                        "stage_icon": "⚖️"
-                    })
+                    await self.broadcast_comprehensive_update(
+                        task, 
+                        "alert_evaluation",
+                        {
+                            "message": f"🚨 Score {relevance_score} exceeds threshold! Checking alert rules...",
+                            "relevance_score": relevance_score,
+                            "threshold_score": task.threshold_score,
+                            "stage_icon": "⚖️"
+                        },
+                        1,  # This source completed analysis
+                        [analysis_info],  # Send the analysis result
+                        0  # No alerts yet
+                    )
+                    
+                    # Add delay to show evaluation stage
+                    await asyncio.sleep(2.0)
+                    logger.info(f"⏱️ Alert evaluation delay: 2.0s for visibility")
                     
                     # Check alert cooldown and rate limiting
                     if not await self.should_create_alert(task, analysis_result):
-                        await self.broadcast_stage_update(task, "alert_suppressed", {
-                            "message": f"🔕 Alert suppressed (cooldown/rate limiting)",
-                            "relevance_score": relevance_score,
-                            "suppressed_reason": "cooldown/rate limiting",
-                            "stage_icon": "🔕"
-                        })
+                        await self.broadcast_comprehensive_update(
+                            task, 
+                            "alert_suppressed",
+                            {
+                                "message": f"🔕 Alert suppressed (cooldown/rate limiting)",
+                                "relevance_score": relevance_score,
+                                "suppressed_reason": "cooldown/rate limiting",
+                                "stage_icon": "🔕"
+                            },
+                            1,  # This source completed
+                            [analysis_info],  # Send the analysis result
+                            0  # No alerts generated
+                        )
                         logger.info(f"Alert suppressed due to cooldown/rate limiting for {task.source_url}")
                         analysis_info['alert_generated'] = False
                         analysis_info['suppressed_reason'] = 'cooldown/rate limiting'
+                        
+                        # Wait a bit then go to finalizing
+                        await asyncio.sleep(2.0)
+                        
+                        await self.broadcast_comprehensive_update(
+                            task, 
+                            "finalizing",
+                            {
+                                "message": f"✅ Task completed (alert suppressed)",
+                                "final_score": relevance_score,
+                                "alert_generated": False,
+                                "processing_time": analysis_info.get('processing_time_seconds', 0),
+                                "stage_icon": "✅",
+                                "completed_at": datetime.now().isoformat()
+                            },
+                            1,  # Source completed
+                            [analysis_info],
+                            0  # No alerts generated
+                        )
+                        
+                        # Final completion
+                        await asyncio.sleep(2.0)
+                        
+                        await self.broadcast_comprehensive_update(
+                            task, 
+                            "completed",
+                            {
+                                "message": f"🎉 Task completed (alert suppressed)!",
+                                "final_score": relevance_score,
+                                "alert_generated": False,
+                                "processing_time": analysis_info.get('processing_time_seconds', 0),
+                                "stage_icon": "🎉",
+                                "completed_at": datetime.now().isoformat()
+                            },
+                            1,  # Source completed
+                            [analysis_info],
+                            0  # No alerts generated
+                        )
+                        
+                        # Remove task from active tracking
+                        if task.job_run_id in self.active_tasks:
+                            del self.active_tasks[task.job_run_id]
+                        
                         return analysis_info
                     
                     # 🎬 STAGE 5: ALERT CREATION
-                    await self.broadcast_stage_update(task, "creating_alert", {
-                        "message": f"📝 Creating alert...",
-                        "relevance_score": relevance_score,
-                        "alert_title": ai_title,
-                        "stage_icon": "📝"
-                    })
+                    await self.broadcast_comprehensive_update(
+                        task, 
+                        "creating_alert",
+                        {
+                            "message": f"📝 Creating alert...",
+                            "relevance_score": relevance_score,
+                            "alert_title": ai_title,
+                            "stage_icon": "📝"
+                        },
+                        1,  # This source completed analysis
+                        [analysis_info],  # Send the analysis result
+                        0  # No alerts created yet
+                    )
+                    
+                    # Add visible delay for creating_alert stage (so users can see it)
+                    await asyncio.sleep(2.0)
+                    logger.info(f"🎭 Alert creation stage delay: 2.0s for visibility")
                     
                     alert_data = {
                         'job_id': task.job_id,
@@ -788,6 +1101,16 @@ class ScalableWorkerManager:
                             await self.record_alert_created(task)
                             analysis_info['alert_generated'] = True
                             
+                            # Immediately broadcast alert creation with updated details
+                            await self.broadcast_comprehensive_update(
+                                task, 
+                                "alert_created",
+                                {"alert_generated": True},
+                                1,  # This source completed
+                                [analysis_info],  # Send updated analysis result with alert flag
+                                1  # One alert generated
+                            )
+                            
                             response_data = response.json()
                             alert_data['id'] = response_data.get('alert_id')
                             logger.info(f"Alert ID from database: {alert_data['id']}")
@@ -809,6 +1132,15 @@ class ScalableWorkerManager:
                         logger.error(f"Error saving alert to database: {e}")
                         analysis_info['alert_generated'] = False
                         analysis_info['error'] = f"Database save error: {e}"
+                        
+                        # Also mark this as a failed job run
+                        await self.finalize_job_run(
+                            task.job_run_id,
+                            1,  # One source processed
+                            0,  # No alerts generated
+                            [analysis_info],
+                            f"Failed to save alert: {e}"
+                        )
                     
                     # Queue alert for notification service (only if successfully saved)
                     if analysis_info.get('alert_generated'):
@@ -837,6 +1169,16 @@ class ScalableWorkerManager:
                     analysis_info['alert_generated'] = False
                     analysis_info['below_threshold'] = True
                     
+                    # Immediately broadcast below threshold result to frontend
+                    await self.broadcast_comprehensive_update(
+                        task, 
+                        "below_threshold",
+                        {"score": relevance_score, "threshold": task.threshold_score},
+                        1,  # This source completed
+                        [analysis_info],  # Send the analysis result
+                        0  # No alerts generated
+                    )
+                    
                     # Store LLM analysis without alert (non-blocking)
                     asyncio.create_task(self.store_llm_analysis(
                         task.job_run_id, task.source_url, analysis_result, 
@@ -847,112 +1189,67 @@ class ScalableWorkerManager:
                 completion_delay = random.uniform(1.0, 2.0)
                 await asyncio.sleep(completion_delay)
                 
-                await self.broadcast_stage_update(task, "completed", {
-                    "message": f"✅ Task completed successfully",
-                    "final_score": relevance_score,
-                    "alert_generated": analysis_info.get('alert_generated', False),
-                    "processing_time": analysis_info.get('processing_time_seconds', 0),
-                    "stage_icon": "✅",
-                    "completed_at": datetime.now().isoformat()
-                })
+                await self.broadcast_comprehensive_update(
+                    task, 
+                    "finalizing",
+                    {
+                        "message": f"✅ Task completed successfully",
+                        "final_score": relevance_score,
+                        "alert_generated": analysis_info.get('alert_generated', False),
+                        "processing_time": analysis_info.get('processing_time_seconds', 0),
+                        "stage_icon": "✅",
+                        "completed_at": datetime.now().isoformat()
+                    },
+                    1,  # Source completed
+                    [analysis_info] if analysis_info else [],
+                    1 if analysis_info.get('alert_generated', False) else 0
+                )
+                
+                # Wait a bit then broadcast final completion
+                await asyncio.sleep(2.0)  # Show finalizing for 2 seconds
+                
+                await self.broadcast_comprehensive_update(
+                    task, 
+                    "completed",
+                    {
+                        "message": f"🎉 Task completed successfully!",
+                        "final_score": relevance_score,
+                        "alert_generated": analysis_info.get('alert_generated', False),
+                        "processing_time": analysis_info.get('processing_time_seconds', 0),
+                        "stage_icon": "🎉",
+                        "completed_at": datetime.now().isoformat()
+                    },
+                    1,  # Source completed
+                    [analysis_info] if analysis_info else [],
+                    1 if analysis_info.get('alert_generated', False) else 0
+                )
+                
+                # Remove task from active tracking
+                if task.job_run_id in self.active_tasks:
+                    del self.active_tasks[task.job_run_id]
                 
                 return analysis_info
                     
             except Exception as e:
-                await self.broadcast_stage_update(task, "error", {
-                    "message": f"💥 Task failed: {str(e)}",
-                    "error": str(e),
-                    "stage_icon": "💥"
-                })
+                await self.broadcast_comprehensive_update(
+                    task, 
+                    "failed",
+                    {
+                        "message": f"💥 Task failed: {str(e)}",
+                        "error": str(e),
+                        "stage_icon": "💥",
+                        "failed_at": datetime.now().isoformat()
+                    },
+                    0,  # No sources processed
+                    [],  # No analysis results
+                    0  # No alerts generated
+                )
                 logger.error(f"Error processing task {task.job_name} - {task.source_url}: {e}")
-                return False
-                analysis_info = {
-                    'source_url': task.source_url,
-                    'relevance_score': relevance_score,
-                    'title': analysis_result.get('title', 'No title'),
-                    'summary': analysis_result.get('summary', 'No summary available'),
-                    'threshold_score': task.threshold_score,
-                    'alert_generated': False,
-                    'processed_at': datetime.now().isoformat()
-                }
                 
-                if relevance_score >= task.threshold_score:
-                    # Check alert cooldown and rate limiting
-                    if not await self.should_create_alert(task, analysis_result):
-                        logger.info(f"Alert suppressed due to cooldown/rate limiting for {task.source_url}")
-                        analysis_info['alert_generated'] = False
-                        analysis_info['suppressed_reason'] = 'cooldown/rate limiting'
-                        return analysis_info
-                    
-                    alert_data = {
-                        'job_id': task.job_id,
-                        'job_run_id': task.job_run_id,
-                        'source_url': task.source_url,
-                        'relevance_score': relevance_score,
-                        'title': analysis_result.get('title', 'Alert'),
-                        'content': analysis_result.get('summary', 'No summary available'),
-                        'timestamp': datetime.now().isoformat(),
-                        'user_id': task.user_id
-                    }
-                    
-                    # Queue alert for notification service
-                    # Save alert to database via API
-                    try:
-                        api_url = os.getenv("API_SERVICE_URL", "http://api_service:8000")
-                        headers = {
-                            "X-Internal-API-Key": os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production"),
-                            "Content-Type": "application/json"
-                        }
-                        
-                        response = requests.post(f"{api_url}/alerts", json=alert_data, headers=headers, timeout=5)
-                        if response.status_code == 200:
-                            logger.info(f"✅ Alert saved to database")
-                            # Record alert creation for rate limiting
-                            await self.record_alert_created(task)
-                            analysis_info['alert_generated'] = True
-                            
-                            # Get the alert ID from the response and add it to alert_data
-                            response_data = response.json()
-                            alert_data['id'] = response_data.get('alert_id')
-                            logger.info(f"Alert ID from database: {alert_data['id']}")
-                        else:
-                            logger.error(f"Failed to save alert to database: {response.status_code}")
-                            analysis_info['alert_generated'] = False
-                            analysis_info['error'] = f"Database save failed: {response.status_code}"
-                    except Exception as e:
-                        logger.error(f"Error saving alert to database: {e}")
-                        analysis_info['alert_generated'] = False
-                        analysis_info['error'] = f"Database save error: {e}"
-                    
-                    # Queue alert for notification service (only if successfully saved)
-                    if analysis_info.get('alert_generated'):
-                        self.redis_client.lpush("alert_queue", json.dumps(alert_data))
-                        logger.info(f"Alert queued for notification with ID: {alert_data.get('id')}")
-                    
-                    logger.info(f"🚨 ALERT GENERATED! {task.source_url} (score: {relevance_score})")
-                    
-                    # Store LLM analysis with alert info (non-blocking)
-                    asyncio.create_task(self.store_llm_analysis(
-                        task.job_run_id, task.source_url, analysis_result, 
-                        task.prompt, True
-                    ))
-                    
-                    return analysis_info
-                else:
-                    logger.info(f"Score {relevance_score} below threshold {task.threshold_score}")
-                    analysis_info['alert_generated'] = False
-                    analysis_info['below_threshold'] = True
-                    
-                    # Store LLM analysis without alert (non-blocking)
-                    asyncio.create_task(self.store_llm_analysis(
-                        task.job_run_id, task.source_url, analysis_result, 
-                        task.prompt, False
-                    ))
-                    
-                    return analysis_info
-                    
-            except Exception as e:
-                logger.error(f"Error processing task {task.job_name} - {task.source_url}: {e}")
+                # Remove task from active tracking
+                if task.job_run_id in self.active_tasks:
+                    del self.active_tasks[task.job_run_id]
+                
                 return False
 
     
@@ -1023,13 +1320,24 @@ class ScalableWorkerManager:
                         return_exceptions=True
                     )
                     
+                    # Check for exceptions and handle them
+                    for i, result in enumerate(results):
+                        if isinstance(result, Exception):
+                            task = all_tasks[i]
+                            logger.error(f"Task {task.job_run_id} failed with exception: {result}")
+                            # Update job run tracking with error
+                            if task.job_run_id in job_run_tracking:
+                                job_run_tracking[task.job_run_id]["error"] = str(result)
+                    
                     # Finalize all job runs with proper source counts
                     for job_run_id, tracking in job_run_tracking.items():
+                        error_message = tracking.get("error")
                         await self.finalize_job_run(
                             job_run_id,
                             tracking["sources_processed"],
                             tracking["alerts_generated"],
-                            tracking.get("analysis_results", [])
+                            tracking.get("analysis_results", []),
+                            error_message
                         )
                     
                     # Update job run times
@@ -1084,6 +1392,9 @@ class ScalableWorkerManager:
                 conn.close()
                 logger.info(f"Finalized job_run {job_run_id}: {sources_processed} sources, {alerts_generated} alerts")
                 
+                # Broadcast final completion status to frontend
+                await self.broadcast_job_completion(job_run_id, sources_processed, alerts_generated, analysis_results, error_message)
+                
                 # Complete MongoDB tracking (non-blocking)
                 try:
                     loop = asyncio.get_event_loop()
@@ -1094,6 +1405,67 @@ class ScalableWorkerManager:
             except Exception as e:
                 logger.error(f"Failed to finalize job_run {job_run_id}: {e}")
     
+    async def broadcast_job_completion(self, job_run_id: str, sources_processed: int, alerts_generated: int, 
+                                     analysis_results: List[Dict], error_message: str = None):
+        """Broadcast job completion status to frontend"""
+        try:
+            # Get task info for this job run
+            task_info = None
+            for task in self.active_tasks.values():
+                if task.job_run_id == job_run_id:
+                    task_info = task
+                    break
+            
+            if not task_info:
+                logger.warning(f"Could not find task info for job_run {job_run_id} - completion broadcast skipped")
+                return
+            
+            api_url = os.getenv("API_SERVICE_URL", "http://api_service:8000")
+            headers = {
+                "X-Internal-API-Key": os.getenv("INTERNAL_API_KEY", "internal-service-key-change-in-production"),
+                "Content-Type": "application/json"
+            }
+            
+            # Prepare completion data
+            completion_data = {
+                "run_id": job_run_id,
+                "job_id": task_info.job_id,
+                "job_name": task_info.job_name,
+                "source_url": task_info.source_url,
+                "current_stage": "failed" if error_message else "completed",
+                "completion_percentage": 100,
+                "stage_data": {
+                    "message": f"❌ Job failed: {error_message}" if error_message else "✅ Job completed successfully",
+                    "sources_processed": sources_processed,
+                    "alerts_generated": alerts_generated,
+                    "final_status": "failed" if error_message else "completed",
+                    "completed_at": datetime.now().isoformat(),
+                    "stage_icon": "❌" if error_message else "✅"
+                },
+                "sources_processed": sources_processed,
+                "sources_total": 1,  # Single source jobs
+                "alerts_generated": alerts_generated,
+                "analysis_details": analysis_results[-10:] if analysis_results else [],
+                "last_updated": datetime.now().isoformat(),
+                "timestamp": datetime.now().isoformat(),
+                "user_id": task_info.user_id,
+                "status": "failed" if error_message else "completed"
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{api_url}/jobs/execution-update",
+                    json=completion_data,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=5)
+                ) as response:
+                    if response.status == 200:
+                        logger.info(f"✅ Broadcasted job completion for {job_run_id}")
+                    else:
+                        logger.warning(f"Failed to broadcast job completion: {response.status}")
+                        
+        except Exception as e:
+            logger.error(f"Error broadcasting job completion: {e}")
     
     def run_async_processor(self):
         """Run the async event loop"""

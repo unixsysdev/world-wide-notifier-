@@ -114,7 +114,9 @@ const LiveDashboard = ({ user, userSubscription }) => {
         return;
       }
       
-      const response = await axios.get(`${API_URL}/dashboard/live-stats`);
+      const response = await axios.get(`${API_URL}/dashboard/live-stats`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       setDashboardData(response.data);
     } catch (error) {
       if (error.response?.status === 401) {
@@ -133,8 +135,39 @@ const LiveDashboard = ({ user, userSubscription }) => {
         return;
       }
       
-      const response = await axios.get(`${API_URL}/dashboard/running-jobs`);
-      setRunningJobs(response.data.running_jobs || []);
+      const response = await axios.get(`${API_URL}/dashboard/running-jobs`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const jobs = response.data.running_jobs || [];
+      console.log('🔄 Fetched running jobs from API:', jobs.length);
+      
+      // Ensure all jobs have required fields
+      const validatedJobs = jobs.map(job => {
+        const getStageProgressLocal = (stage) => {
+          const stageMap = {
+            'initializing': 10,
+            'scraping': 25,
+            'analyzing': 50,
+            'alert_evaluation': 70,
+            'creating_alert': 85,
+            'finalizing': 95,
+            'completed': 100
+          };
+          return stageMap[stage] || 0;
+        };
+        
+        return {
+          ...job,
+          completion_percentage: Math.min(100, Math.max(0, job.completion_percentage || getStageProgressLocal(job.current_stage || 'initializing'))),
+        runtime_seconds: job.runtime_seconds || 0,
+        sources_processed: job.sources_processed || 0,
+        alerts_generated: job.alerts_generated || 0,
+        analysis_details: job.analysis_details || [],
+        sources_total: job.sources_total || 0
+        };
+      });
+      
+      setRunningJobs(validatedJobs);
     } catch (error) {
       if (error.response?.status === 401) {
         console.log('🔑 Auth required for running jobs');
@@ -152,7 +185,10 @@ const LiveDashboard = ({ user, userSubscription }) => {
         return;
       }
       
-      const response = await axios.get(`${API_URL}/dashboard/job-execution-history`, { params: { limit: 10 } });
+      const response = await axios.get(`${API_URL}/dashboard/job-execution-history`, { 
+        params: { limit: 10 },
+        headers: { Authorization: `Bearer ${token}` }
+      });
       setExecutionHistory(response.data.execution_history || []);
     } catch (error) {
       if (error.response?.status === 401) {
@@ -163,13 +199,38 @@ const LiveDashboard = ({ user, userSubscription }) => {
     }
   }, []);
 
-  // WebSocket message handler - FIXED to actually update the fucking UI!
+  // Helper function to calculate stage progress
+  const getStageProgress = useCallback((stage) => {
+    const stageMap = {
+      'initializing': 10,
+      'scraping': 25,
+      'scraping_complete': 40,
+      'analyzing': 50,
+      'analysis_complete': 60,
+      'alert_evaluation': 70,
+      'creating_alert': 85,
+      'alert_created': 90,
+      'alert_suppressed': 90,
+      'alert_failed': 90,
+      'below_threshold': 90,
+      'finalizing': 95,
+      'completed': 100,
+      'failed': 100,
+      'error': 100
+    };
+    return stageMap[stage] || 0;
+  }, []);
+
+  // WebSocket message handler - COMPREHENSIVE LIVE DASHBOARD FIX
   const handleWebSocketMessage = useCallback((message) => {
     console.log('🔥 LIVE UPDATE - WebSocket message received:', message.type, message);
     
-    switch (message.type) {
+    // Add error handling for all message processing
+    try {
+      switch (message.type) {
       case 'new_alert':
         console.log('🚨 NEW ALERT - Updating dashboard counts');
+        // Update dashboard alert counts
         setDashboardData(prev => prev ? {
           ...prev,
           alerts: {
@@ -178,6 +239,22 @@ const LiveDashboard = ({ user, userSubscription }) => {
             last_24_hours: (prev.alerts?.last_24_hours || 0) + 1
           }
         } : prev);
+        
+        // Also update the running job's alert count if it exists
+        const alertJobRunId = message.data?.job_run_id;
+        if (alertJobRunId) {
+          console.log('🔔 Updating job alert count for:', alertJobRunId);
+          setRunningJobs(prev => prev.map(job => 
+            job.run_id === alertJobRunId 
+              ? { 
+                  ...job, 
+                  alerts_generated: (job.alerts_generated || 0) + 1,
+                  // Force a refresh to show alert generated status
+                  last_stage_update: Date.now()
+                }
+              : job
+          ));
+        }
         break;
         
       case 'job_execution_update':
@@ -188,17 +265,34 @@ const LiveDashboard = ({ user, userSubscription }) => {
           // Check if this job already exists
           const jobExists = prev.some(job => job.run_id === message.data.run_id);
           
-          if (!jobExists && message.data.status !== 'completed' && message.data.status !== 'failed') {
+          if (!jobExists && message.data.run_id && message.data.current_stage && message.data.current_stage !== 'completed' && message.data.current_stage !== 'failed') {
             // Add new job if it doesn't exist and isn't already done
-            console.log('➕ Adding NEW running job:', message.data.run_id);
+            console.log('➕ Adding NEW running job:', message.data.run_id, 'stage:', message.data.current_stage);
             const newJob = {
               ...message.data,
+              job_id: message.data.job_id,
+              job_name: message.data.job_name,
+              run_id: message.data.run_id,
+              current_stage: message.data.current_stage || 'initializing',
               runtime_seconds: 0,
-              completion_percentage: 0,
-              sources_processed: 0,
-              alerts_generated: 0,
-              started_at: new Date().toISOString()
+              completion_percentage: message.data.completion_percentage || getStageProgress(message.data.current_stage || 'initializing'),
+              sources_processed: message.data.sources_processed || 0,
+              alerts_generated: message.data.alerts_generated || 0,
+              started_at: message.data.started_at || new Date().toISOString(),
+              analysis_details: message.data.analysis_details || [],
+              sources_total: message.data.sources_total || 1,
+              stage_data: message.data.stage_data || {}
             };
+            
+            // Update dashboard stats when new job starts
+            setDashboardData(prevDashboard => prevDashboard ? {
+              ...prevDashboard,
+              jobs: {
+                ...prevDashboard.jobs,
+                currently_running: (prevDashboard.jobs?.currently_running || 0) + 1
+              }
+            } : prevDashboard);
+            
             return [...prev, newJob];
           }
           
@@ -207,22 +301,90 @@ const LiveDashboard = ({ user, userSubscription }) => {
             if (job.run_id === message.data.run_id) {
               console.log('🔄 Updating existing job:', job.run_id, 'from', job.current_stage, 'to', message.data.current_stage);
               
-              // Calculate completion percentage based on sources
-              const completionPercentage = job.sources_total > 0 
-                ? Math.round((message.data.sources_processed || job.sources_processed || 0) / job.sources_total * 100)
-                : 0;
+              // Use backend completion_percentage if provided, otherwise calculate from stage
+              const completionPercentage = message.data.completion_percentage !== undefined 
+                ? message.data.completion_percentage 
+                : getStageProgress(message.data.current_stage || job.current_stage);
               
-              // Calculate runtime
-              const startTime = new Date(job.started_at || Date.now());
-              const runtime = Math.floor((Date.now() - startTime.getTime()) / 1000);
+              console.log('📊 Progress update:', job.completion_percentage, '->', completionPercentage);
+              
+              // Use backend runtime if provided, otherwise calculate it intelligently
+              let runtime = 0;
+              if (message.data.runtime_seconds !== undefined) {
+                // Use backend-provided runtime
+                runtime = Math.max(0, Math.min(message.data.runtime_seconds, 86400));
+              } else if (job.started_at) {
+                // Calculate runtime but use existing value as baseline to avoid huge jumps
+                try {
+                  const startTime = new Date(job.started_at);
+                  const calculatedRuntime = Math.floor((Date.now() - startTime.getTime()) / 1000);
+                  const existingRuntime = job.runtime_seconds || 0;
+                  
+                  // Only update if the calculated time is reasonable and not too different
+                  if (calculatedRuntime >= 0 && calculatedRuntime <= 86400) {
+                    // Use calculated runtime, but don't let it jump too much
+                    runtime = calculatedRuntime;
+                  } else {
+                    // Keep existing runtime if calculation seems wrong
+                    runtime = existingRuntime;
+                  }
+                } catch (e) {
+                  runtime = job.runtime_seconds || 0;
+                }
+              } else {
+                runtime = job.runtime_seconds || 0;
+              }
               
               return { 
                 ...job, 
                 ...message.data,
-                completion_percentage: completionPercentage,
+                // Preserve essential job info
+                job_id: job.job_id || message.data.job_id,
+                job_name: job.job_name || message.data.job_name,
+                run_id: job.run_id || message.data.run_id,
+                current_stage: message.data.current_stage || job.current_stage,
+                completion_percentage: Math.min(100, Math.max(0, completionPercentage)),
                 runtime_seconds: runtime,
-                // Preserve analysis details if not provided in update
-                analysis_details: message.data.analysis_details || job.analysis_details || []
+                sources_total: Math.max(job.sources_total || 1, message.data.sources_total || 1),
+                sources_processed: Math.max(job.sources_processed || 0, message.data.sources_processed || 0),
+                // Accumulate analysis details properly - avoid duplicates by source_url
+                analysis_details: message.data.analysis_details 
+                  ? (() => {
+                      const existing = job.analysis_details || [];
+                      const newDetails = message.data.analysis_details || [];
+                      const combined = [...existing];
+                      
+                      console.log('🔍 Analysis details update:', {
+                        existing: existing.length,
+                        new: newDetails.length,
+                        newDetails: newDetails.map(d => ({ 
+                          url: d.source_url, 
+                          title: d.title, 
+                          summary: d.summary ? d.summary.substring(0, 50) + '...' : 'No summary',
+                          score: d.relevance_score,
+                          hasLLM: !!d.title || !!d.summary,
+                          hasContent: !!d.content_preview
+                        }))
+                      });
+                      
+                      newDetails.forEach(newDetail => {
+                        const existsIndex = combined.findIndex(item => 
+                          item.source_url === newDetail.source_url
+                        );
+                        if (existsIndex >= 0) {
+                          // Update existing entry
+                          combined[existsIndex] = newDetail;
+                        } else {
+                          // Add new entry
+                          combined.push(newDetail);
+                        }
+                      });
+                      
+                      return combined;
+                    })()
+                  : job.analysis_details || [],
+                // Preserve alerts_generated count (increment only when new alerts are created)
+                alerts_generated: message.data.alerts_generated !== undefined ? message.data.alerts_generated : job.alerts_generated
               };
             }
             return job;
@@ -232,18 +394,40 @@ const LiveDashboard = ({ user, userSubscription }) => {
           return updatedJobs;
         });
         
-        // Handle job completion
-        if (message.data.status === 'completed' || message.data.status === 'failed') {
-          console.log('🏁 Job finishing, scheduling removal in 3 seconds:', message.data.run_id);
-          setTimeout(() => {
-            setRunningJobs(current => {
-              const filtered = current.filter(job => job.run_id !== message.data.run_id);
-              console.log('🗑️ Removed completed job, remaining:', filtered.length);
-              return filtered;
-            });
-            // Refresh history to show the completed job
-            fetchExecutionHistory();
-          }, 3000);
+        // Handle job completion - Show finalizing stage first, then remove after showing completion
+        if (message.data?.current_stage === 'completed' || message.data?.current_stage === 'failed') {
+          console.log('🏁 Job completed/failed, will remove after brief display:', message.data.run_id);
+          
+          // Update dashboard stats when job completes
+          setDashboardData(prevDashboard => prevDashboard ? {
+            ...prevDashboard,
+            jobs: {
+              ...prevDashboard.jobs,
+              currently_running: Math.max(0, runningJobs.length - 1)
+            },
+            execution_stats: {
+              ...prevDashboard.execution_stats,
+              completed_runs_24h: (prevDashboard.execution_stats?.completed_runs_24h || 0) + 1,
+              runs_24h: (prevDashboard.execution_stats?.runs_24h || 0) + 1
+            }
+          } : prevDashboard);
+          
+          // Check if job is expanded - if so, don't auto-remove
+          const isJobExpanded = expandedJobs.has(message.data.run_id);
+          
+          if (!isJobExpanded && message.data?.current_stage === 'completed') {
+            setTimeout(() => {
+              setRunningJobs(current => {
+                const filtered = current.filter(job => job.run_id !== message.data.run_id);
+                console.log('🗑️ Removed completed job, remaining:', filtered.length);
+                return filtered;
+              });
+              // Refresh history to show the completed job
+              fetchExecutionHistory();
+            }, 3000); // Show finalizing stage for 3 seconds
+          } else {
+            console.log('🔍 Job is expanded, keeping for user review');
+          }
         }
         break;
         
@@ -253,30 +437,162 @@ const LiveDashboard = ({ user, userSubscription }) => {
           return prev.map(job => {
             if (job.run_id === message.data.run_id) {
               console.log('🎬 Updating stage for job:', job.run_id, 'to stage:', message.data.current_stage);
+              const newCompletionPercentage = message.data.completion_percentage !== undefined 
+                ? message.data.completion_percentage 
+                : getStageProgress(message.data.current_stage);
+              console.log('📊 Stage progress update:', job.completion_percentage, '->', newCompletionPercentage);
               
-              // Calculate runtime
-              const startTime = new Date(job.started_at || Date.now());
-              const runtime = Math.floor((Date.now() - startTime.getTime()) / 1000);
+              // Use backend runtime if provided, otherwise calculate it intelligently
+              let runtime = 0;
+              if (message.data.runtime_seconds !== undefined) {
+                // Use backend-provided runtime
+                runtime = Math.max(0, Math.min(message.data.runtime_seconds, 86400));
+              } else if (job.started_at) {
+                // Calculate runtime but use existing value as baseline to avoid huge jumps
+                try {
+                  const startTime = new Date(job.started_at);
+                  const calculatedRuntime = Math.floor((Date.now() - startTime.getTime()) / 1000);
+                  const existingRuntime = job.runtime_seconds || 0;
+                  
+                  // Only update if the calculated time is reasonable and not too different
+                  if (calculatedRuntime >= 0 && calculatedRuntime <= 86400) {
+                    // Use calculated runtime, but don't let it jump too much
+                    runtime = calculatedRuntime;
+                  } else {
+                    // Keep existing runtime if calculation seems wrong
+                    runtime = existingRuntime;
+                  }
+                } catch (e) {
+                  runtime = job.runtime_seconds || 0;
+                }
+              } else {
+                runtime = job.runtime_seconds || 0;
+              }
               
               return {
                 ...job,
                 current_stage: message.data.current_stage,
-                stage_data: message.data.stage_data || {},
+                stage_data: message.data.stage_data || message.data,
                 runtime_seconds: runtime,
-                last_stage_update: Date.now()
+                completion_percentage: Math.min(100, Math.max(0, newCompletionPercentage)),
+                last_stage_update: Date.now(),
+                // Accumulate analysis details if included in stage update
+                analysis_details: message.data.analysis_details
+                  ? (() => {
+                      const existing = job.analysis_details || [];
+                      const newDetails = message.data.analysis_details || [];
+                      const combined = [...existing];
+                      
+                      console.log('🎭 Stage update analysis details:', {
+                        stage: message.data.current_stage,
+                        existing: existing.length,
+                        new: newDetails.length,
+                        newDetails: newDetails.map(d => ({ 
+                          url: d.source_url, 
+                          title: d.title, 
+                          summary: d.summary ? d.summary.substring(0, 50) + '...' : 'No summary',
+                          score: d.relevance_score,
+                          hasLLM: !!d.title || !!d.summary,
+                          hasContent: !!d.content_preview
+                        }))
+                      });
+                      
+                      newDetails.forEach(newDetail => {
+                        const existsIndex = combined.findIndex(item => 
+                          item.source_url === newDetail.source_url
+                        );
+                        if (existsIndex >= 0) {
+                          combined[existsIndex] = newDetail;
+                        } else {
+                          combined.push(newDetail);
+                        }
+                      });
+                      
+                      return combined;
+                    })()
+                  : job.analysis_details,
+                // Update alerts count if stage is about alert creation
+                alerts_generated: message.data.current_stage === 'alert_created' 
+                  ? (job.alerts_generated || 0) + 1 
+                  : job.alerts_generated || 0
               };
             }
             return job;
           });
         });
+        
+        // Handle job completion - only remove when fully completed
+        if (message.data?.current_stage === 'completed') {
+          console.log('✅ Job completed, updating stats and scheduling removal:', message.data.run_id);
+          
+          // Update dashboard stats when job completes
+          setDashboardData(prevDashboard => prevDashboard ? {
+            ...prevDashboard,
+            jobs: {
+              ...prevDashboard.jobs,
+              currently_running: Math.max(0, runningJobs.length - 1)
+            },
+            execution_stats: {
+              ...prevDashboard.execution_stats,
+              completed_runs_24h: (prevDashboard.execution_stats?.completed_runs_24h || 0) + 1,
+              runs_24h: (prevDashboard.execution_stats?.runs_24h || 0) + 1
+            }
+          } : prevDashboard);
+          
+          // Check if job is expanded - if so, don't auto-remove
+          const isJobExpanded = expandedJobs.has(message.data.run_id);
+          
+          if (!isJobExpanded) {
+            setTimeout(() => {
+              setRunningJobs(current => {
+                const filtered = current.filter(job => job.run_id !== message.data.run_id);
+                console.log('🗑️ Removed completed job from stage update, remaining:', filtered.length);
+                return filtered;
+              });
+              // Refresh history to show the completed job
+              fetchExecutionHistory();
+            }, 3000); // Show completion for 3 seconds
+          } else {
+            console.log('🔍 Job is expanded, keeping for user review');
+          }
+        }
+        
+        // Handle failed jobs - keep them visible with failed status
+        if (message.data?.current_stage === 'failed' || message.data?.current_stage === 'error') {
+          console.log('❌ Job failed, keeping for review:', message.data.run_id);
+          
+          // Update dashboard stats when job fails
+          setDashboardData(prevDashboard => prevDashboard ? {
+            ...prevDashboard,
+            jobs: {
+              ...prevDashboard.jobs,
+              currently_running: Math.max(0, runningJobs.length - 1)
+            },
+            execution_stats: {
+              ...prevDashboard.execution_stats,
+              failed_runs_24h: (prevDashboard.execution_stats?.failed_runs_24h || 0) + 1,
+              runs_24h: (prevDashboard.execution_stats?.runs_24h || 0) + 1
+            }
+          } : prevDashboard);
+          
+          // Don't auto-remove failed jobs - let user manually remove them
+        }
         break;
         
       case 'dashboard_stats_update':
         console.log('📊 STATS UPDATE - Dashboard statistics');
-        setDashboardData(prev => ({
-          ...prev,
-          ...message.data
-        }));
+        if (message.data) {
+          setDashboardData(prev => ({
+            ...prev,
+            ...message.data,
+            // Ensure we preserve the live running count
+            jobs: {
+              ...prev?.jobs,
+              ...message.data.jobs,
+              currently_running: runningJobs.length
+            }
+          }));
+        }
         break;
         
       case 'job_status_change':
@@ -296,8 +612,13 @@ const LiveDashboard = ({ user, userSubscription }) => {
         console.log('❓ UNKNOWN MESSAGE TYPE:', message.type, message.data);
     }
     
+    
     setLastUpdate(Date.now());
-  }, [fetchRunningJobs, fetchExecutionHistory]);
+    
+    } catch (error) {
+      console.error('❌ Error processing WebSocket message:', error, message);
+    }
+  }, [fetchRunningJobs, fetchExecutionHistory, getStageProgress, expandedJobs]);
 
   // Initialize WebSocket connection
   const { isConnected, connectionStatus } = useWebSocket(user, handleWebSocketMessage);
@@ -370,6 +691,10 @@ const LiveDashboard = ({ user, userSubscription }) => {
   };
 
   const formatDuration = (seconds) => {
+    // Handle invalid or extremely large values
+    if (!seconds || seconds < 0 || seconds > 86400) { // Cap at 24 hours
+      return '0:00';
+    }
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
@@ -435,8 +760,22 @@ const LiveDashboard = ({ user, userSubscription }) => {
             onClick={() => {
               console.log('🔍 MANUAL DEBUG - Current state:');
               console.log('Running jobs:', runningJobs);
+              console.log('Dashboard data:', dashboardData);
               console.log('WebSocket connected:', isConnected);
               console.log('Last update:', new Date(lastUpdate));
+              console.log('Expected vs Actual:');
+              console.log('  - runningJobs.length:', runningJobs.length);
+              console.log('  - dashboardData.jobs.currently_running:', dashboardData?.jobs?.currently_running);
+              runningJobs.forEach((job, index) => {
+                console.log(`  Job ${index + 1}:`, {
+                  id: job.run_id,
+                  name: job.job_name,
+                  stage: job.current_stage,
+                  progress: job.completion_percentage,
+                  analysisCount: job.analysis_details?.length || 0,
+                  alerts: job.alerts_generated
+                });
+              });
               fetchRunningJobs();
             }}
             className="px-2 py-1 rounded-full text-xs font-medium transition-colors bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 hover:bg-blue-200 dark:hover:bg-blue-800"
@@ -449,6 +788,7 @@ const LiveDashboard = ({ user, userSubscription }) => {
               console.log('🔄 FORCE REFRESH - Running jobs');
               fetchRunningJobs();
               fetchExecutionHistory();
+              fetchDashboardStats();
             }}
             className="px-2 py-1 rounded-full text-xs font-medium transition-colors bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 hover:bg-purple-200 dark:hover:bg-purple-800"
           >
@@ -508,18 +848,18 @@ const LiveDashboard = ({ user, userSubscription }) => {
         {/* Currently Running - LIVE EXECUTION */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl p-3 lg:p-4 shadow-md border border-gray-100 dark:border-gray-700 relative overflow-hidden">
           <div className="absolute top-2 right-2">
-            <div className={`w-2 h-2 rounded-full ${dashboardData?.jobs?.currently_running > 0 ? 'bg-orange-500 animate-pulse' : 'bg-gray-400'}`}></div>
+            <div className={`w-2 h-2 rounded-full ${runningJobs.length > 0 ? 'bg-orange-500 animate-pulse' : 'bg-gray-400'}`}></div>
           </div>
           <div className="flex items-center space-x-2 lg:space-x-3">
             <div className="bg-orange-100 dark:bg-orange-900 p-1.5 lg:p-2 rounded-xl flex-shrink-0">
               <span className="text-lg lg:text-xl">🏃</span>
             </div>
             <div className="min-w-0">
-              <div className="text-lg lg:text-xl font-bold text-gray-800 dark:text-white">{dashboardData?.jobs?.currently_running || 0}</div>
+              <div className="text-lg lg:text-xl font-bold text-gray-800 dark:text-white">{runningJobs.length}</div>
               <div className="text-xs font-medium text-gray-600 dark:text-gray-400">Executing Now</div>
             </div>
           </div>
-          {dashboardData?.jobs?.currently_running > 0 && (
+          {runningJobs.length > 0 && (
             <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-orange-400 via-red-500 to-purple-600 animate-pulse"></div>
           )}
         </div>
@@ -599,29 +939,28 @@ const LiveDashboard = ({ user, userSubscription }) => {
           </h2>
           
           <div className="space-y-4">
-            {runningJobs.map((job, index) => (
+            {runningJobs.filter(job => job.run_id).map((job, index) => (
               <div 
                 key={job.run_id}
-                className={`transform transition-all duration-700 ease-in-out relative ${
-                  job.current_stage === 'completed' || job.current_stage === 'failed' 
-                    ? 'job-completing' 
-                    : job.current_stage === 'alert_created'
-                    ? 'job-alert-generated'
-                    : job.current_stage === 'analyzing' || job.current_stage === 'scraping'
-                    ? 'data-flowing'
-                    : ''
+                className={`transform transition-all duration-300 ease-in-out ${
+                  job.current_stage === 'finalizing' 
+                    ? 'animate-pulse' 
+                    : job.current_stage === 'failed'
+                    ? 'border-red-300'
+                    : 'hover:scale-[1.02]'
                 }`}
                 style={{
-                  animationDelay: `${index * 150}ms`,
-                  animation: job.current_stage === 'completed' || job.current_stage === 'failed' 
-                    ? 'slideOutFadeOut 3s ease-in forwards' 
-                    : 'slideInFadeIn 0.7s ease-out forwards'
+                  minHeight: '120px' // Prevent layout shift
                 }}
               >
                 <JobCard
                   job={job}
                   isExpanded={expandedJobs.has(job.run_id)}
                   onToggleExpansion={toggleJobExpansion}
+                  onManualRemove={(runId) => {
+                    setRunningJobs(current => current.filter(job => job.run_id !== runId));
+                    fetchExecutionHistory(); // Refresh history
+                  }}
                 />
               </div>
             ))}

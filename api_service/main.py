@@ -462,7 +462,7 @@ def create_api_key(user_id: str, name: str, rate_limit_per_minute: int = None):
     if rate_limit_per_minute is None:
         tier_limits = {
             'free': 60,
-            'premium': 120,
+            'premium': 300,
             'premium_plus': 300
         }
         rate_limit_per_minute = tier_limits.get(subscription['tier'], 60)
@@ -1378,10 +1378,17 @@ async def update_job_execution_status(
                 job_owner = cur.fetchone()
                 
                 if job_owner:
+                    # Determine message type based on content
+                    message_type = "job_execution_update"
+                    
+                    # If this update contains stage information, send as stage_update
+                    if execution_data.get('current_stage') and execution_data.get('stage_data'):
+                        message_type = "stage_update"
+                    
                     # Broadcast job execution update to connected WebSocket clients
                     await broadcast_dashboard_update(
                         job_owner['user_id'],
-                        "job_execution_update",
+                        message_type,
                         execution_data
                     )
                 
@@ -1793,7 +1800,12 @@ async def get_running_jobs(current_user=Depends(get_current_user)):
                     jr.sources_processed,
                     jr.alerts_generated,
                     jr.analysis_summary,
-                    EXTRACT(EPOCH FROM (NOW() - jr.started_at)) as runtime_seconds
+                    EXTRACT(EPOCH FROM (
+                        CASE 
+                            WHEN jr.status = 'running' THEN NOW() - jr.started_at
+                            ELSE COALESCE(jr.completed_at, NOW()) - jr.started_at
+                        END
+                    )) as runtime_seconds
                 FROM job_runs jr
                 JOIN jobs j ON jr.job_id = j.id
                 WHERE j.user_id = %s 
@@ -1823,13 +1835,21 @@ async def get_running_jobs(current_user=Depends(get_current_user)):
                     "next_stage": "scraping"
                 }
                 
-                sources_total = len(job['sources']) if job['sources'] else 0
+                # Calculate actual sources count
+                sources_list = job.get('sources', [])
+                if isinstance(sources_list, str):
+                    try:
+                        sources_list = json.loads(sources_list)
+                    except:
+                        sources_list = []
+                
+                sources_total = len(sources_list) if sources_list else 1
                 sources_processed = job['sources_processed'] or 0
                 analysis_details = analysis_summary.get('analysis_details', [])
                 
                 if sources_processed == 0:
                     current_stage = "initializing"
-                    stage_details["current_operation"] = "Preparing to scrape sources"
+                    stage_details["current_operation"] = "Starting job execution"
                 elif sources_processed < sources_total:
                     # Currently scraping
                     current_stage = "scraping"
@@ -1887,9 +1907,9 @@ async def get_running_jobs(current_user=Depends(get_current_user)):
                     "threshold_score": job['threshold_score'],
                     "sources_total": sources_total,
                     "sources_processed": sources_processed,
-                    "alerts_generated": job['alerts_generated'] or 0,
+                    "alerts_generated": job['alerts_generated'] or 0,  # This is for this specific job run
                     "started_at": job['started_at'].isoformat() if job['started_at'] else None,
-                    "runtime_seconds": int(job['runtime_seconds']) if job['runtime_seconds'] else 0,
+                    "runtime_seconds": max(0, int(job['runtime_seconds']) if job['runtime_seconds'] else 0),
                     "current_stage": current_stage,
                     "stage_details": stage_details,
                     "analysis_details": enhanced_analysis,
@@ -2546,6 +2566,137 @@ async def get_stripe_config():
     return {
         "publishable_key": STRIPE_PUBLISHABLE_KEY
     }
+
+@app.get("/failed-jobs")
+async def get_failed_jobs(
+    current_user=Depends(get_current_user),
+    resolved: bool = False,
+    limit: int = 100
+):
+    """Get failed jobs for debugging and investigation"""
+    user_id = current_user['id']
+    
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT 
+                    fj.id,
+                    fj.job_id,
+                    fj.job_run_id,
+                    fj.job_name,
+                    fj.source_url,
+                    fj.failure_stage,
+                    fj.error_message,
+                    fj.error_details,
+                    fj.retry_count,
+                    fj.last_retry_at,
+                    fj.resolved,
+                    fj.resolved_at,
+                    fj.resolved_by,
+                    fj.created_at,
+                    j.prompt,
+                    j.threshold_score
+                FROM failed_jobs fj
+                JOIN jobs j ON fj.job_id = j.id
+                WHERE fj.user_id = %s AND fj.resolved = %s
+                ORDER BY fj.created_at DESC
+                LIMIT %s
+            """, (user_id, resolved, limit))
+            
+            failed_jobs = cur.fetchall()
+            
+            return {
+                "failed_jobs": [
+                    {
+                        "id": job['id'],
+                        "job_id": job['job_id'],
+                        "job_run_id": job['job_run_id'],
+                        "job_name": job['job_name'],
+                        "source_url": job['source_url'],
+                        "failure_stage": job['failure_stage'],
+                        "error_message": job['error_message'],
+                        "error_details": job['error_details'],
+                        "retry_count": job['retry_count'],
+                        "last_retry_at": job['last_retry_at'].isoformat() if job['last_retry_at'] else None,
+                        "resolved": job['resolved'],
+                        "resolved_at": job['resolved_at'].isoformat() if job['resolved_at'] else None,
+                        "resolved_by": job['resolved_by'],
+                        "created_at": job['created_at'].isoformat(),
+                        "job_prompt": job['prompt'],
+                        "threshold_score": job['threshold_score']
+                    }
+                    for job in failed_jobs
+                ],
+                "total_count": len(failed_jobs)
+            }
+
+@app.post("/failed-jobs/{failed_job_id}/retry")
+async def retry_failed_job(
+    failed_job_id: str,
+    current_user=Depends(get_current_user)
+):
+    """Retry a failed job"""
+    user_id = current_user['id']
+    
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            # Get failed job details
+            cur.execute("""
+                SELECT fj.*, j.sources
+                FROM failed_jobs fj
+                JOIN jobs j ON fj.job_id = j.id
+                WHERE fj.id = %s AND fj.user_id = %s
+            """, (failed_job_id, user_id))
+            
+            failed_job = cur.fetchone()
+            if not failed_job:
+                raise HTTPException(status_code=404, detail="Failed job not found")
+            
+            # Update retry count
+            cur.execute("""
+                UPDATE failed_jobs 
+                SET retry_count = retry_count + 1, last_retry_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+            """, (failed_job_id,))
+            
+            # Queue the job for retry
+            retry_message = {
+                "job_id": failed_job['job_id'],
+                "action": "retry_failed",
+                "failed_job_id": failed_job_id,
+                "user_id": user_id
+            }
+            redis_client.lpush("job_queue", json.dumps(retry_message))
+            
+            conn.commit()
+            
+            return {
+                "message": f"Job '{failed_job['job_name']}' queued for retry",
+                "retry_count": failed_job['retry_count'] + 1
+            }
+
+@app.post("/failed-jobs/{failed_job_id}/resolve")
+async def resolve_failed_job(
+    failed_job_id: str,
+    current_user=Depends(get_current_user)
+):
+    """Mark a failed job as resolved"""
+    user_id = current_user['id']
+    
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE failed_jobs 
+                SET resolved = TRUE, resolved_at = CURRENT_TIMESTAMP, resolved_by = %s
+                WHERE id = %s AND user_id = %s
+            """, (current_user['email'], failed_job_id, user_id))
+            
+            if cur.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Failed job not found")
+            
+            conn.commit()
+            
+            return {"message": "Failed job marked as resolved"}
 
 @app.get("/health")
 async def health_check():

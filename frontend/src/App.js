@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './AuthContext';
 import Login from './Login';
 import Settings from './Settings';
 import APIManagement from './APIManagement';
+import FailedJobs from './FailedJobs';
 
 import LiveDashboard from './LiveDashboard';
 import ResponsiveNavigation from './components/ResponsiveNavigation';
@@ -26,6 +27,7 @@ const MainApp = () => {
     if (path.includes('/settings')) return 'settings';
     if (path.includes('/programmer')) return 'api';
     if (path.includes('/live')) return 'live';
+    if (path.includes('/failed-jobs')) return 'failed-jobs';
     return 'dashboard';
   });
   const [dataLoading, setDataLoading] = useState(true);
@@ -75,7 +77,8 @@ const MainApp = () => {
     setCurrentView(view);
     const newPath = view === 'dashboard' ? '/' : 
                    view === 'api' ? '/programmer' : 
-                   view === 'live' ? '/live' : `/${view}`;
+                   view === 'live' ? '/live' : 
+                   view === 'failed-jobs' ? '/failed-jobs' : `/${view}`;
     window.history.pushState(null, '', newPath);
   };
 
@@ -87,6 +90,7 @@ const MainApp = () => {
       else if (path.includes('/settings')) handleViewChange('settings');
       else if (path.includes('/programmer')) handleViewChange('api');
       else if (path.includes('/live')) handleViewChange('live');
+      else if (path.includes('/failed-jobs')) handleViewChange('failed-jobs');
       else setCurrentView('dashboard');
     };
 
@@ -502,6 +506,30 @@ const MainApp = () => {
       toggleDarkMode={toggleDarkMode}
       onBack={() => handleViewChange('dashboard')} 
     />;
+  }
+
+  if (currentView === 'failed-jobs') {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
+        <ResponsiveNavigation 
+          currentView={currentView}
+          handleViewChange={handleViewChange}
+          alerts={alerts}
+          user={user}
+          isDarkMode={isDarkMode}
+          toggleDarkMode={toggleDarkMode}
+          logout={logout}
+        />
+        <FailedJobs 
+          user={user} 
+          logout={logout} 
+          isDarkMode={isDarkMode}
+          toggleDarkMode={toggleDarkMode}
+          onEditJob={editJob}
+          onNavigate={handleViewChange}
+        />
+      </div>
+    );
   }
 
   if (currentView === 'api') {

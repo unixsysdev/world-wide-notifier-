@@ -138,6 +138,26 @@ CREATE TABLE subscription_events (
 );
 
 -- Indexes for performance
+-- Failed jobs table for debugging and retry
+CREATE TABLE failed_jobs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    job_id UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    job_run_id UUID REFERENCES job_runs(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    job_name VARCHAR(255) NOT NULL,
+    source_url TEXT NOT NULL,
+    failure_stage VARCHAR(50) NOT NULL, -- scraping, analysis, alert_creation
+    error_message TEXT NOT NULL,
+    error_details JSONB, -- Detailed error information
+    retry_count INTEGER DEFAULT 0,
+    last_retry_at TIMESTAMP,
+    resolved BOOLEAN DEFAULT FALSE,
+    resolved_at TIMESTAMP,
+    resolved_by VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX idx_jobs_user_id ON jobs(user_id);
 CREATE INDEX idx_jobs_active ON jobs(is_active);
 CREATE INDEX idx_job_runs_job_id ON job_runs(job_id);
@@ -156,3 +176,6 @@ CREATE INDEX idx_users_stripe_customer_id ON users(stripe_customer_id);
 CREATE INDEX idx_api_keys_user_id ON api_keys(user_id);
 CREATE INDEX idx_api_keys_key_hash ON api_keys(key_hash);
 CREATE INDEX idx_api_keys_active ON api_keys(is_active);
+CREATE INDEX idx_failed_jobs_user_id ON failed_jobs(user_id);
+CREATE INDEX idx_failed_jobs_resolved ON failed_jobs(resolved);
+CREATE INDEX idx_failed_jobs_created_at ON failed_jobs(created_at);

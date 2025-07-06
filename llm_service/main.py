@@ -168,31 +168,56 @@ Scoring Guidelines:
                 json_text = json_match.group() if json_match else None
             
             if json_text:
-                analysis_data = json.loads(json_text)
-                # Handle both single object and array responses
-                if isinstance(analysis_data, list) and len(analysis_data) > 0:
-                    analysis_data = analysis_data[0]  # Take the first item if it's an array
-                score = analysis_data.get('relevance_score', 0)
-                print(f"Analysis score: {score}")
-                
-                return AnalysisResponse(
-                    relevance_score=score,
-                    title=analysis_data.get('title', 'Analysis Result'),
-                    summary=analysis_data.get('summary', 'Content analyzed'),
-                    key_points=analysis_data.get('key_points', ['Analysis completed']),
-                    confidence=analysis_data.get('confidence', 0.5),
-                    success=True
-                )
+                try:
+                    analysis_data = json.loads(json_text)
+                    # Handle both single object and array responses
+                    if isinstance(analysis_data, list) and len(analysis_data) > 0:
+                        analysis_data = analysis_data[0]  # Take the first item if it's an array
+                    score = analysis_data.get('relevance_score', 0)
+                    print(f"Analysis score: {score}")
+                    
+                    return AnalysisResponse(
+                        relevance_score=score,
+                        title=analysis_data.get('title', 'Analysis Result'),
+                        summary=analysis_data.get('summary', 'Content analyzed'),
+                        key_points=analysis_data.get('key_points', ['Analysis completed']),
+                        confidence=analysis_data.get('confidence', 0.5),
+                        success=True
+                    )
+                except json.JSONDecodeError as e:
+                    print(f"JSON parsing error: {e}")
+                    print(f"Raw JSON text: {json_text[:200]}...")
+                    return AnalysisResponse(
+                        relevance_score=0,
+                        title="JSON Parsing Error",
+                        summary=f"Error parsing LLM response: {str(e)}",
+                        key_points=["JSON parsing failed"],
+                        confidence=0.0,
+                        success=False,
+                        error=f"JSON parsing failed: {str(e)}"
+                    )
+                except Exception as e:
+                    print(f"Analysis data processing error: {e}")
+                    return AnalysisResponse(
+                        relevance_score=0,
+                        title="Analysis Processing Error",
+                        summary=f"Error processing analysis data: {str(e)}",
+                        key_points=["Analysis processing failed"],
+                        confidence=0.0,
+                        success=False,
+                        error=f"Analysis processing failed: {str(e)}"
+                    )
             else:
                 print("No JSON found in response")
+                print(f"Raw response: {response_text[:500]}...")
                 return AnalysisResponse(
                     relevance_score=0,
                     title="Parsing Error",
-                    summary="Could not parse LLM response",
+                    summary="Could not parse LLM response - no JSON found",
                     key_points=["JSON parsing failed"],
                     confidence=0.0,
                     success=False,
-                    error="JSON parsing failed"
+                    error="JSON parsing failed - no JSON found in response"
                 )
         else:
             print(f"OpenRouter API error: {response.status_code}")

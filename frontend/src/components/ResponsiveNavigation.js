@@ -30,7 +30,7 @@ const ResponsiveNavigation = ({
                     : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white transition-colors'
                 }`}
               >
-                Dashboard
+                🏠 Dashboard
               </button>
               <button
                 onClick={() => handleViewChange('live')}
@@ -50,7 +50,7 @@ const ResponsiveNavigation = ({
                     : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white transition-colors'
                 }`}
               >
-                Alerts
+                🚨 Alerts
                 {alerts.filter(a => !a.is_acknowledged).length > 0 && (
                   <span className="ml-1 bg-red-500 text-white text-xs rounded-full px-2 py-0.5">
                     {alerts.filter(a => !a.is_acknowledged).length}
@@ -65,7 +65,17 @@ const ResponsiveNavigation = ({
                     : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white transition-colors'
                 }`}
               >
-                Settings
+                ⚙️ Settings
+              </button>
+              <button
+                onClick={() => handleViewChange('failed-jobs')}
+                className={`px-3 py-2 rounded-md text-sm font-medium ${
+                  currentView === 'failed-jobs' 
+                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200' 
+                    : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white transition-colors'
+                }`}
+              >
+                🔧 Failed Jobs
               </button>
               <button
                 onClick={() => handleViewChange('api')}
@@ -75,7 +85,7 @@ const ResponsiveNavigation = ({
                     : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white transition-colors'
                 }`}
               >
-                API
+                🔌 API
               </button>
             </div>
 
@@ -91,13 +101,14 @@ const ResponsiveNavigation = ({
                 }}
                 className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-1 text-sm text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-blue-500"
               >
-                <option value="dashboard">Dashboard</option>
+                <option value="dashboard">🏠 Dashboard</option>
                 <option value="live">⚡ Live Monitor</option>
                 <option value="alerts">
-                  Alerts{alerts.filter(a => !a.is_acknowledged).length > 0 ? ` (${alerts.filter(a => !a.is_acknowledged).length})` : ''}
+                  🚨 Alerts{alerts.filter(a => !a.is_acknowledged).length > 0 ? ` (${alerts.filter(a => !a.is_acknowledged).length})` : ''}
                 </option>
-                <option value="settings">Settings</option>
-                <option value="api">API</option>
+                <option value="settings">⚙️ Settings</option>
+                <option value="failed-jobs">🔧 Failed Jobs</option>
+                <option value="api">🔌 API</option>
               </select>
             </div>
           </div>
