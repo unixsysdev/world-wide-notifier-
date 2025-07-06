@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
-const Settings = ({ user, logout, userSubscription, setCurrentView, currentView, alerts, onBack }) => {
+const Settings = ({ user, logout, userSubscription, setCurrentView, currentView, alerts, isDarkMode, toggleDarkMode, onBack }) => {
   const [channels, setChannels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -210,20 +210,20 @@ const Settings = ({ user, logout, userSubscription, setCurrentView, currentView,
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
       {/* Navigation Header */}
-      <nav className="bg-white shadow-sm">
+      <nav className="bg-white dark:bg-gray-800 shadow-sm">
         <div className="container mx-auto px-4">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-8">
-              <h1 className="text-xl font-bold text-gray-900">AI Monitoring</h1>
+              <h1 className="text-xl font-bold text-gray-900 dark:text-white">AI Monitoring</h1>
               <div className="flex space-x-4">
                 <button
                   onClick={() => setCurrentView('dashboard')}
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
                     currentView === 'dashboard' 
                       ? 'bg-blue-100 text-blue-700' 
-                      : 'text-gray-500 hover:text-gray-700'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white'
                   }`}
                 >
                   Dashboard
@@ -233,7 +233,7 @@ const Settings = ({ user, logout, userSubscription, setCurrentView, currentView,
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
                     currentView === 'alerts' 
                       ? 'bg-blue-100 text-blue-700' 
-                      : 'text-gray-500 hover:text-gray-700'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white'
                   }`}
                 >
                   Alerts
@@ -248,7 +248,7 @@ const Settings = ({ user, logout, userSubscription, setCurrentView, currentView,
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
                     currentView === 'settings' 
                       ? 'bg-blue-100 text-blue-700' 
-                      : 'text-gray-500 hover:text-gray-700'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white'
                   }`}
                 >
                   Settings
@@ -258,7 +258,7 @@ const Settings = ({ user, logout, userSubscription, setCurrentView, currentView,
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
                     currentView === 'api' 
                       ? 'bg-blue-100 text-blue-700' 
-                      : 'text-gray-500 hover:text-gray-700'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white'
                   }`}
                 >
                   API
@@ -266,7 +266,22 @@ const Settings = ({ user, logout, userSubscription, setCurrentView, currentView,
               </div>
             </div>
             <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-600">Welcome, {user?.name}</span>
+              <span className="text-sm text-gray-600 dark:text-gray-300">Welcome, {user?.name}</span>
+              <button
+                onClick={toggleDarkMode}
+                className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 transition-colors"
+                title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+              >
+                {isDarkMode ? (
+                  <svg className="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
+                  </svg>
+                )}
+              </button>
               <button
                 onClick={logout}
                 className="text-sm text-red-600 hover:text-red-800"
@@ -281,21 +296,21 @@ const Settings = ({ user, logout, userSubscription, setCurrentView, currentView,
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto">
           
-          <div className="bg-white overflow-hidden shadow rounded-lg">
+          <div className="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
             <div className="px-4 py-5 sm:p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
                 Settings for {user?.name}
               </h3>
               
               {/* Subscription Management Section */}
               <div className="mb-8">
-                <h4 className="text-md font-medium text-gray-900 mb-4">Subscription Management</h4>
+                <h4 className="text-md font-medium text-gray-900 dark:text-white mb-4">Subscription Management</h4>
                 
                 {userSubscription && (
                   <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-6 mb-4 border border-blue-200">
                     <div className="flex justify-between items-start mb-4">
                       <div>
-                        <h5 className="text-lg font-semibold text-gray-900 capitalize flex items-center">
+                        <h5 className="text-lg font-semibold text-gray-900 dark:text-white capitalize flex items-center">
                           {userSubscription.tier} Plan
                           {userSubscription.tier === 'premium_plus' && (
                             <span className="ml-2 bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full">
@@ -308,24 +323,24 @@ const Settings = ({ user, logout, userSubscription, setCurrentView, currentView,
                             </span>
                           )}
                         </h5>
-                        <p className="text-sm text-gray-600 mt-1">
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                           Status: <span className={`capitalize font-medium ${
                             userSubscription.status === 'active' ? 'text-green-600' : 'text-red-600'
                           }`}>{userSubscription.status}</span>
                         </p>
                         {userSubscription.tier === 'free' && (
-                          <p className="text-sm text-gray-600 mt-1">
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                             Daily alerts used: {userSubscription.daily_alert_count}/{userSubscription.alert_limit}
                           </p>
                         )}
                       </div>
                       <div className="text-right">
-                        <div className="bg-white rounded-lg p-3 shadow-sm">
-                          <p className="text-xs text-gray-500 mb-1">Limits</p>
-                          <p className="text-sm font-medium text-gray-900">
+                        <div className="bg-white dark:bg-gray-700 rounded-lg p-3 shadow-sm">
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Limits</p>
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">
                             {userSubscription.alert_limit === 999999 ? 'Unlimited' : userSubscription.alert_limit} alerts
                           </p>
-                          <p className="text-sm text-gray-600">
+                          <p className="text-sm text-gray-600 dark:text-gray-300">
                             {userSubscription.min_frequency_minutes}min frequency
                           </p>
                         </div>
@@ -463,7 +478,7 @@ const Settings = ({ user, logout, userSubscription, setCurrentView, currentView,
 
               <div className="mb-8">
                 <div className="flex justify-between items-center mb-4">
-                  <h4 className="text-md font-medium text-gray-900">Notification Channels</h4>
+                  <h4 className="text-md font-medium text-gray-900 dark:text-white">Notification Channels</h4>
                   <button
                     onClick={() => setShowAddForm(true)}
                     className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
@@ -473,14 +488,14 @@ const Settings = ({ user, logout, userSubscription, setCurrentView, currentView,
                 </div>
                 
                 {channels.length === 0 ? (
-                  <p className="text-gray-500">No notification channels configured</p>
+                  <p className="text-gray-500 dark:text-gray-400">No notification channels configured</p>
                 ) : (
                   <div className="space-y-4">
                     {channels.map((channel) => (
-                      <div key={channel.id} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div key={channel.id} className="flex items-center justify-between p-4 border dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">
                         <div>
-                          <div className="font-medium capitalize">{channel.channel_type}</div>
-                          <div className="text-sm text-gray-600">{renderChannelConfig(channel)}</div>
+                          <div className="font-medium capitalize text-gray-900 dark:text-white">{channel.channel_type}</div>
+                          <div className="text-sm text-gray-600 dark:text-gray-400">{renderChannelConfig(channel)}</div>
                         </div>
                         <button
                           onClick={() => handleDeleteChannel(channel.id)}

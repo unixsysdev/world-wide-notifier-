@@ -30,7 +30,7 @@ const Login = ({ isDarkMode, toggleDarkMode }) => {
   }, [showLogin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!showLogin) {
-    return <LandingPage onShowLogin={() => setShowLogin(true)} isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />;
+    return <LandingPage onShowLogin={() => setShowLogin(true)} />;
   }
 
   const handleGoogleSignInClick = () => {

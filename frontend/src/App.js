@@ -47,17 +47,13 @@ const MainApp = () => {
   const [selectedJobFilter, setSelectedJobFilter] = useState(null);
   const [jobSearchQuery, setJobSearchQuery] = useState('');
 
-  // Dark mode state
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    const saved = localStorage.getItem('darkMode');
-    return saved ? JSON.parse(saved) : false;
-  });
+  // Dark mode state (defaulting to light mode)
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
   // Toggle dark mode
   const toggleDarkMode = () => {
     const newMode = !isDarkMode;
     setIsDarkMode(newMode);
-    localStorage.setItem('darkMode', JSON.stringify(newMode));
     document.documentElement.classList.toggle('dark', newMode);
   };
 
@@ -479,7 +475,7 @@ const MainApp = () => {
   }
 
   if (!isAuthenticated) {
-    return <Login isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />;
+    return <Login />;
   }
 
   if (currentView === 'settings') {
@@ -538,7 +534,7 @@ const MainApp = () => {
                     className={`px-3 py-2 rounded-md text-sm font-medium ${
                       currentView === 'dashboard' 
                         ? 'bg-blue-100 text-blue-700' 
-                        : 'text-gray-500 hover:text-gray-700'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white'
                     }`}
                   >
                     Dashboard
@@ -548,7 +544,7 @@ const MainApp = () => {
                     className={`px-3 py-2 rounded-md text-sm font-medium ${
                       currentView === 'alerts' 
                         ? 'bg-blue-100 text-blue-700' 
-                        : 'text-gray-500 hover:text-gray-700'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white'
                     }`}
                   >
                     Alerts
@@ -563,7 +559,7 @@ const MainApp = () => {
                     className={`px-3 py-2 rounded-md text-sm font-medium ${
                       currentView === 'settings' 
                         ? 'bg-blue-100 text-blue-700' 
-                        : 'text-gray-500 hover:text-gray-700'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white'
                     }`}
                   >
                     Settings
@@ -573,7 +569,7 @@ const MainApp = () => {
                     className={`px-3 py-2 rounded-md text-sm font-medium ${
                       currentView === 'api' 
                         ? 'bg-blue-100 text-blue-700' 
-                        : 'text-gray-500 hover:text-gray-700'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white'
                     }`}
                   >
                     API
@@ -581,7 +577,7 @@ const MainApp = () => {
                 </div>
               </div>
               <div className="flex items-center space-x-4">
-                <span className="text-sm text-gray-600">Welcome, {user?.name}</span>
+                <span className="text-sm text-gray-600 dark:text-gray-300">Welcome, {user?.name}</span>
                 <button
                   onClick={toggleDarkMode}
                   className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 transition-colors"
@@ -817,14 +813,14 @@ const MainApp = () => {
         <div className="container mx-auto px-4">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-8">
-              <h1 className="text-xl font-bold text-gray-900">AI Monitoring</h1>
+              <h1 className="text-xl font-bold text-gray-900 dark:text-white">AI Monitoring</h1>
               <div className="flex space-x-4">
                 <button
                   onClick={() => handleViewChange('dashboard')}
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
                     currentView === 'dashboard' 
                       ? 'bg-blue-100 text-blue-700' 
-                      : 'text-gray-500 hover:text-gray-700'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white'
                   }`}
                 >
                   Dashboard
@@ -834,7 +830,7 @@ const MainApp = () => {
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
                     currentView === 'alerts' 
                       ? 'bg-blue-100 text-blue-700' 
-                      : 'text-gray-500 hover:text-gray-700'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white'
                   }`}
                 >
                   Alerts
@@ -849,7 +845,7 @@ const MainApp = () => {
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
                     currentView === 'settings' 
                       ? 'bg-blue-100 text-blue-700' 
-                      : 'text-gray-500 hover:text-gray-700'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white'
                   }`}
                 >
                   Settings
@@ -859,7 +855,7 @@ const MainApp = () => {
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
                     currentView === 'api' 
                       ? 'bg-blue-100 text-blue-700' 
-                      : 'text-gray-500 hover:text-gray-700'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white'
                   }`}
                 >
                   API
@@ -867,7 +863,7 @@ const MainApp = () => {
               </div>
             </div>
             <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-600">Welcome, {user?.name}</span>
+              <span className="text-sm text-gray-600 dark:text-gray-300">Welcome, {user?.name}</span>
               <button
                 onClick={toggleDarkMode}
                 className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 transition-colors"
@@ -903,7 +899,7 @@ const MainApp = () => {
                 <span className="mr-3 text-3xl">🚀</span>
                 <div>
                   <div>AI Monitoring Dashboard</div>
-                  <div className="text-sm text-gray-600 font-normal">Welcome back, {user?.name}!</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400 font-normal">Welcome back, {user?.name}!</div>
                 </div>
               </h1>
               <button
@@ -917,50 +913,50 @@ const MainApp = () => {
             
             {/* Quick Stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-              <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-md border border-gray-100 dark:border-gray-700">
                 <div className="flex items-center space-x-3">
-                  <div className="bg-blue-100 p-3 rounded-xl">
+                  <div className="bg-blue-100 dark:bg-blue-900 p-3 rounded-xl">
                     <span className="text-3xl">💼</span>
                   </div>
                   <div>
-                    <div className="text-2xl font-bold text-gray-800">{jobs.length}</div>
-                    <div className="text-xs font-medium text-gray-600">Active Jobs</div>
+                    <div className="text-2xl font-bold text-gray-800 dark:text-white">{jobs.length}</div>
+                    <div className="text-xs font-medium text-gray-600 dark:text-gray-400">Active Jobs</div>
                   </div>
                 </div>
               </div>
               
-              <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-md border border-gray-100 dark:border-gray-700">
                 <div className="flex items-center space-x-3">
-                  <div className="bg-red-100 p-3 rounded-xl">
+                  <div className="bg-red-100 dark:bg-red-900 p-3 rounded-xl">
                     <span className="text-3xl">🚨</span>
                   </div>
                   <div>
-                    <div className="text-2xl font-bold text-gray-800">{alerts.length}</div>
-                    <div className="text-xs font-medium text-gray-600">Total Alerts</div>
+                    <div className="text-2xl font-bold text-gray-800 dark:text-white">{alerts.length}</div>
+                    <div className="text-xs font-medium text-gray-600 dark:text-gray-400">Total Alerts</div>
                   </div>
                 </div>
               </div>
               
-              <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-md border border-gray-100 dark:border-gray-700">
                 <div className="flex items-center space-x-3">
-                  <div className="bg-orange-100 p-3 rounded-xl">
+                  <div className="bg-orange-100 dark:bg-orange-900 p-3 rounded-xl">
                     <span className="text-3xl">⚠️</span>
                   </div>
                   <div>
-                    <div className="text-2xl font-bold text-gray-800">{alerts.filter(alert => !alert.is_acknowledged).length}</div>
-                    <div className="text-xs font-medium text-gray-600">Pending</div>
+                    <div className="text-2xl font-bold text-gray-800 dark:text-white">{alerts.filter(alert => !alert.is_acknowledged).length}</div>
+                    <div className="text-xs font-medium text-gray-600 dark:text-gray-400">Pending</div>
                   </div>
                 </div>
               </div>
               
-              <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-md border border-gray-100 dark:border-gray-700">
                 <div className="flex items-center space-x-3">
-                  <div className={`p-3 rounded-xl ${userSubscription?.tier === 'free' ? 'bg-yellow-100' : 'bg-green-100'}`}>
+                  <div className={`p-3 rounded-xl ${userSubscription?.tier === 'free' ? 'bg-yellow-100 dark:bg-yellow-900' : 'bg-green-100 dark:bg-green-900'}`}>
                     <span className="text-3xl">{userSubscription?.tier === 'free' ? '🆓' : '⭐'}</span>
                   </div>
                   <div>
-                    <div className="text-lg font-bold text-gray-800 capitalize">{userSubscription?.tier || 'Free'}</div>
-                    <div className="text-xs font-medium text-gray-600">Current Plan</div>
+                    <div className="text-lg font-bold text-gray-800 dark:text-white capitalize">{userSubscription?.tier || 'Free'}</div>
+                    <div className="text-xs font-medium text-gray-600 dark:text-gray-400">Current Plan</div>
                   </div>
                 </div>
               </div>
@@ -968,10 +964,10 @@ const MainApp = () => {
             
             {/* Plan Info and Upgrade Section */}
             {userSubscription && (
-              <div className="mt-6 flex items-center justify-between bg-white rounded-2xl p-4 border border-gray-100">
+              <div className="mt-6 flex items-center justify-between bg-white dark:bg-gray-800 rounded-2xl p-4 border border-gray-100 dark:border-gray-700">
                 <div className="flex items-center space-x-4">
                   {userSubscription.tier === 'free' && (
-                    <div className="text-sm text-gray-600">
+                    <div className="text-sm text-gray-600 dark:text-gray-400">
                       <span className="font-semibold">Usage:</span> {userSubscription.daily_alert_count}/{userSubscription.alert_limit} alerts today
                     </div>
                   )}
@@ -1000,7 +996,7 @@ const MainApp = () => {
 
         {/* Jobs Section Header */}
         <div className="flex justify-between items-center mb-8">
-          <h2 className="text-xl font-bold text-gray-900 flex items-center">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center">
             <span className="mr-2">💼</span> Your Monitoring Jobs
           </h2>
           <div className="flex items-center space-x-4">

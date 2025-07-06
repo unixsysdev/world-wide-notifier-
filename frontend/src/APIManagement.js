@@ -3,7 +3,7 @@ import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
-const APIManagement = ({ user, logout, userSubscription, setCurrentView, currentView, alerts }) => {
+const APIManagement = ({ user, logout, userSubscription, setCurrentView, currentView, alerts, isDarkMode, toggleDarkMode }) => {
   const [apiKeys, setApiKeys] = useState([]);
   const [showCreateApiKey, setShowCreateApiKey] = useState(false);
   const [apiKeyForm, setApiKeyForm] = useState({ name: '', rate_limit_per_minute: '' });
@@ -78,20 +78,20 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
   };
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
       {/* Navigation Header */}
-      <nav className="bg-white shadow-sm">
+      <nav className="bg-white dark:bg-gray-800 shadow-sm">
         <div className="container mx-auto px-4">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-8">
-              <h1 className="text-xl font-bold text-gray-900">AI Monitoring</h1>
+              <h1 className="text-xl font-bold text-gray-900 dark:text-white">AI Monitoring</h1>
               <div className="flex space-x-4">
                 <button
                   onClick={() => setCurrentView('dashboard')}
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
                     currentView === 'dashboard' 
                       ? 'bg-blue-100 text-blue-700' 
-                      : 'text-gray-500 hover:text-gray-700'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white'
                   }`}
                 >
                   Dashboard
@@ -101,7 +101,7 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
                     currentView === 'alerts' 
                       ? 'bg-blue-100 text-blue-700' 
-                      : 'text-gray-500 hover:text-gray-700'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white'
                   }`}
                 >
                   Alerts
@@ -116,7 +116,7 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
                     currentView === 'settings' 
                       ? 'bg-blue-100 text-blue-700' 
-                      : 'text-gray-500 hover:text-gray-700'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white'
                   }`}
                 >
                   Settings
@@ -126,7 +126,7 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
                     currentView === 'api' 
                       ? 'bg-blue-100 text-blue-700' 
-                      : 'text-gray-500 hover:text-gray-700'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white'
                   }`}
                 >
                   API
@@ -134,7 +134,22 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
               </div>
             </div>
             <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-600">Welcome, {user?.name}</span>
+              <span className="text-sm text-gray-600 dark:text-gray-300">Welcome, {user?.name}</span>
+              <button
+                onClick={toggleDarkMode}
+                className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 transition-colors"
+                title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+              >
+                {isDarkMode ? (
+                  <svg className="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
+                  </svg>
+                )}
+              </button>
               <button
                 onClick={logout}
                 className="text-sm text-red-600 hover:text-red-800"
@@ -150,10 +165,10 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div>
-            <h2 className="text-3xl font-bold text-gray-900 flex items-center">
+            <h2 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center">
               <span className="mr-3">🔑</span> API Management
             </h2>
-            <p className="text-gray-600 mt-2">Manage your API keys and access the AI Monitoring API programmatically</p>
+            <p className="text-gray-600 dark:text-gray-400 mt-2">Manage your API keys and access the AI Monitoring API programmatically</p>
           </div>
           <button
             onClick={() => setShowCreateApiKey(true)}
@@ -166,54 +181,54 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
 
         {/* API Usage Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200">
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg border border-gray-200 dark:border-gray-700">
             <div className="flex items-center space-x-3">
-              <div className="bg-blue-100 p-3 rounded-xl">
+              <div className="bg-blue-100 dark:bg-blue-900 p-3 rounded-xl">
                 <span className="text-2xl">🔑</span>
               </div>
               <div>
-                <div className="text-2xl font-bold text-gray-800">{apiKeys.length}</div>
-                <div className="text-sm text-gray-600">API Keys</div>
+                <div className="text-2xl font-bold text-gray-800 dark:text-white">{apiKeys.length}</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">API Keys</div>
               </div>
             </div>
           </div>
           
-          <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200">
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg border border-gray-200 dark:border-gray-700">
             <div className="flex items-center space-x-3">
-              <div className="bg-green-100 p-3 rounded-xl">
+              <div className="bg-green-100 dark:bg-green-900 p-3 rounded-xl">
                 <span className="text-2xl">✅</span>
               </div>
               <div>
-                <div className="text-2xl font-bold text-gray-800">{apiKeys.filter(k => k.is_active).length}</div>
-                <div className="text-sm text-gray-600">Active Keys</div>
+                <div className="text-2xl font-bold text-gray-800 dark:text-white">{apiKeys.filter(k => k.is_active).length}</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">Active Keys</div>
               </div>
             </div>
           </div>
           
-          <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200">
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg border border-gray-200 dark:border-gray-700">
             <div className="flex items-center space-x-3">
-              <div className="bg-purple-100 p-3 rounded-xl">
+              <div className="bg-purple-100 dark:bg-purple-900 p-3 rounded-xl">
                 <span className="text-2xl">⚡</span>
               </div>
               <div>
-                <div className="text-2xl font-bold text-gray-800 capitalize">{userSubscription?.tier || 'Free'}</div>
-                <div className="text-sm text-gray-600">Current Plan</div>
+                <div className="text-2xl font-bold text-gray-800 dark:text-white capitalize">{userSubscription?.tier || 'Free'}</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">Current Plan</div>
               </div>
             </div>
           </div>
         </div>
 
         {/* API Keys List */}
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900">Your API Keys</h3>
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900 dark:to-indigo-900 border-b border-gray-200 dark:border-gray-700">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Your API Keys</h3>
           </div>
           
           {apiKeys.length === 0 ? (
             <div className="text-center py-12">
               <div className="text-6xl mb-4">🔑</div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">No API Keys Yet</h3>
-              <p className="text-gray-600 mb-6">Create your first API key to start using the AI Monitoring API</p>
+              <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">No API Keys Yet</h3>
+              <p className="text-gray-600 dark:text-gray-400 mb-6">Create your first API key to start using the AI Monitoring API</p>
               <button
                 onClick={() => setShowCreateApiKey(true)}
                 className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg"
@@ -222,20 +237,20 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
               </button>
             </div>
           ) : (
-            <div className="divide-y divide-gray-200">
+            <div className="divide-y divide-gray-200 dark:divide-gray-700">
               {apiKeys.map((apiKey) => (
-                <div key={apiKey.id} className="px-6 py-4 hover:bg-gray-50 transition-colors">
+                <div key={apiKey.id} className="px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
                       <div className="flex items-center space-x-3">
                         <div className={`w-3 h-3 rounded-full ${apiKey.is_active ? 'bg-green-400' : 'bg-gray-400'}`}></div>
-                        <h4 className="text-lg font-semibold text-gray-900">{apiKey.name}</h4>
+                        <h4 className="text-lg font-semibold text-gray-900 dark:text-white">{apiKey.name}</h4>
                         <span className={`px-2 py-1 text-xs rounded-full ${apiKey.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
                           {apiKey.is_active ? 'Active' : 'Inactive'}
                         </span>
                       </div>
-                      <div className="mt-2 flex items-center space-x-4 text-sm text-gray-600">
-                        <span className="font-mono bg-gray-100 px-2 py-1 rounded">{apiKey.key_prefix}</span>
+                      <div className="mt-2 flex items-center space-x-4 text-sm text-gray-600 dark:text-gray-400">
+                        <span className="font-mono bg-gray-100 dark:bg-gray-600 px-2 py-1 rounded">{apiKey.key_prefix}</span>
                         <span>Rate limit: {apiKey.rate_limit_per_minute}/min</span>
                         <span>Created: {new Date(apiKey.created_at).toLocaleDateString()}</span>
                         {apiKey.last_used_at && (
@@ -269,27 +284,27 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
         </div>
 
         {/* API Documentation */}
-        <div className="mt-8 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 bg-gradient-to-r from-purple-50 to-pink-50 border-b border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900">API Documentation</h3>
+        <div className="mt-8 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="px-6 py-4 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900 dark:to-pink-900 border-b border-gray-200 dark:border-gray-700">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">API Documentation</h3>
           </div>
           <div className="px-6 py-4">
             <div className="space-y-6">
               <div>
-                <h4 className="text-md font-semibold text-gray-900 mb-2">Base URL</h4>
-                <code className="bg-gray-100 px-3 py-2 rounded-md text-sm font-mono">{API_URL}/v1</code>
+                <h4 className="text-md font-semibold text-gray-900 dark:text-white mb-2">Base URL</h4>
+                <code className="bg-gray-100 dark:bg-gray-700 px-3 py-2 rounded-md text-sm font-mono">{API_URL}/v1</code>
               </div>
               
               <div>
-                <h4 className="text-md font-semibold text-gray-900 mb-2">Authentication</h4>
-                <p className="text-gray-600 mb-2">Include your API key in the Authorization header:</p>
-                <code className="bg-gray-100 px-3 py-2 rounded-md text-sm font-mono block">
+                <h4 className="text-md font-semibold text-gray-900 dark:text-white mb-2">Authentication</h4>
+                <p className="text-gray-600 dark:text-gray-400 mb-2">Include your API key in the Authorization header:</p>
+                <code className="bg-gray-100 dark:bg-gray-700 px-3 py-2 rounded-md text-sm font-mono block">
                   Authorization: Bearer your_api_key_here
                 </code>
               </div>
               
               <div>
-                <h4 className="text-md font-semibold text-gray-900 mb-2">Available Endpoints</h4>
+                <h4 className="text-md font-semibold text-gray-900 dark:text-white mb-2">Available Endpoints</h4>
                 <div className="space-y-3">
                   <div className="border border-gray-200 rounded-lg p-4">
                     <div className="flex items-center space-x-2 mb-2">
@@ -583,39 +598,39 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
       {/* Create API Key Modal */}
       {showCreateApiKey && (
         <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800 dark:border-gray-700">
             <div className="mt-3">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Create New API Key</h3>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Create New API Key</h3>
               <form onSubmit={createApiKey}>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       Key Name *
                     </label>
                     <input
                       type="text"
                       value={apiKeyForm.name}
                       onChange={(e) => setApiKeyForm({...apiKeyForm, name: e.target.value})}
-                      className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                       placeholder="e.g., Production Key"
                       required
                     />
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       Rate Limit (requests/minute)
                     </label>
                     <input
                       type="number"
                       value={apiKeyForm.rate_limit_per_minute}
                       onChange={(e) => setApiKeyForm({...apiKeyForm, rate_limit_per_minute: e.target.value})}
-                      className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                       placeholder={`Default: ${userSubscription?.tier === 'free' ? '60' : userSubscription?.tier === 'premium' ? '120' : '300'}`}
                       min="1"
                       max={userSubscription?.tier === 'free' ? '60' : userSubscription?.tier === 'premium' ? '120' : '300'}
                     />
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                       Leave blank for tier default. Max: {userSubscription?.tier === 'free' ? '60' : userSubscription?.tier === 'premium' ? '120' : '300'} requests/minute
                     </p>
                   </div>
@@ -648,26 +663,26 @@ const APIManagement = ({ user, logout, userSubscription, setCurrentView, current
       {/* API Key Success Modal */}
       {createdApiKey && (
         <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800 dark:border-gray-700">
             <div className="mt-3">
-              <div className="flex items-center justify-center w-12 h-12 mx-auto bg-green-100 rounded-full mb-4">
-                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="flex items-center justify-center w-12 h-12 mx-auto bg-green-100 dark:bg-green-800 rounded-full mb-4">
+                <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
                 </svg>
               </div>
-              <h3 className="text-lg font-medium text-gray-900 text-center mb-4">API Key Created Successfully!</h3>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white text-center mb-4">API Key Created Successfully!</h3>
               
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                  <div className="bg-gray-100 border border-gray-300 rounded-md px-3 py-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
+                  <div className="bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:text-white">
                     {createdApiKey.name}
                   </div>
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">API Key</label>
-                  <div className="bg-gray-100 border border-gray-300 rounded-md px-3 py-2 font-mono text-sm break-all">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">API Key</label>
+                  <div className="bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 font-mono text-sm break-all dark:text-white">
                     {createdApiKey.key}
                   </div>
                   <button
