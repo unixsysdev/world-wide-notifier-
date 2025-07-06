@@ -1,5 +1,4 @@
 import React, { useEffect, useRef } from 'react';
-import React, { useRef, useEffect } from 'react';
 
 const LandingPage = ({ onShowLogin, isDarkMode, toggleDarkMode }) => {
   const mountRef = useRef(null);
