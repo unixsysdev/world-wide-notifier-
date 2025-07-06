@@ -1393,6 +1393,24 @@ async def update_job_execution_status(
         logger.error(f"Failed to broadcast job execution update: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to broadcast update: {str(e)}")
 
+@app.post("/test/websocket-broadcast")
+async def test_websocket_broadcast(
+    test_data: dict,
+    current_user=Depends(get_current_user)
+):
+    """Test endpoint to manually trigger WebSocket broadcasts for testing"""
+    try:
+        # Broadcast test data to the current user
+        await broadcast_dashboard_update(
+            current_user['id'],
+            test_data.get('type', 'test_update'),
+            test_data.get('data', {})
+        )
+        
+        return {"status": "test_broadcast_sent", "user_id": current_user['id']}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to send test broadcast: {str(e)}")
+
 @app.get("/jobs/{job_id}/runs")
 async def get_job_runs(job_id: str, limit: int = 10, current_user=Depends(get_current_user)):
     """Get recent runs for a specific job with analysis results"""

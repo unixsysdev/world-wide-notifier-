@@ -366,7 +366,12 @@ const LiveDashboard = ({ user, userSubscription }) => {
                   <tr key={run.run_id} className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
                     <td className="py-3 px-4 text-gray-900 dark:text-white">{run.job_name}</td>
                     <td className="py-3 px-4">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStageColor(run.status)}`}>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        run.status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                        run.status === 'failed' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
+                        run.status === 'running' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
+                        'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+                      }`}>
                         {run.status}
                       </span>
                       {run.error_message && (
