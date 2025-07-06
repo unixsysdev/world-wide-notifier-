@@ -49,16 +49,16 @@ services:
       - REDIS_URL=redis://redis:6379
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-      - JWT_SECRET=${JWT_SECRET:-your-secret-key-change-in-production}
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-internal-service-key-change-in-production}
+      - JWT_SECRET=${JWT_SECRET}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
       - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
       - STRIPE_PREMIUM_PRICE_ID=${STRIPE_PREMIUM_PRICE_ID}
       - STRIPE_PREMIUM_PLUS_PRICE_ID=${STRIPE_PREMIUM_PLUS_PRICE_ID}
-      - HOSTNAME=${HOSTNAME:-http://localhost:3000}
+      - HOSTNAME=${HOSTNAME}
       # Internal services use hardcoded service names
-      - FRONTEND_URL=${HOSTNAME:-http://localhost:3000}
+      - FRONTEND_URL=${HOSTNAME}
       - DATA_STORAGE_URL=http://data_storage_service:8004
     depends_on:
       - postgres
@@ -77,7 +77,7 @@ services:
       - "8001:8001"
     environment:
       - REDIS_URL=redis://redis:6379
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-internal-service-key-change-in-production}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
     depends_on:
       - redis
     volumes:
@@ -101,8 +101,8 @@ services:
       - BROWSER_SERVICE_URL=http://browser_service:8001
       - LLM_SERVICE_URL=http://llm_service:8002
       - DATA_STORAGE_URL=http://data_storage_service:8004
-      - HOSTNAME=${HOSTNAME:-http://localhost:3000}
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-internal-service-key-change-in-production}
+      - HOSTNAME=${HOSTNAME}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
     depends_on:
       - postgres
       - redis
@@ -123,7 +123,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - REDIS_URL=redis://redis:6379
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-internal-service-key-change-in-production}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
     depends_on:
       - redis
     volumes:
@@ -143,10 +143,10 @@ services:
       - SENDGRID_API_KEY=${SENDGRID_API_KEY}
       - NOTIFICATION_EMAIL=${NOTIFICATION_EMAIL}
       - TEAMS_WEBHOOK=${TEAMS_WEBHOOK}
-      - HOSTNAME=${HOSTNAME:-http://localhost:3000}
+      - HOSTNAME=${HOSTNAME}
       # Internal services use hardcoded service names
-      - FRONTEND_URL=${HOSTNAME:-http://localhost:3000}
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-internal-service-key-change-in-production}
+      - FRONTEND_URL=${HOSTNAME}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
     depends_on:
       - postgres
       - redis
@@ -164,7 +164,7 @@ services:
     environment:
       - MONGODB_URL=mongodb://monitoring_user:monitoring_pass@mongodb:27017/monitoring_raw_data?authSource=admin
       - REDIS_URL=redis://redis:6379
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-internal-service-key-change-in-production}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
     depends_on:
       - mongodb
       - redis
@@ -180,7 +180,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - REACT_APP_API_URL=${API_URL:-http://localhost:8000}
+      - REACT_APP_API_URL=${API_URL}
       - CHOKIDAR_USEPOLLING=true
     depends_on:
       - api_service
