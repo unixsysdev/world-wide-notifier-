@@ -45,6 +45,7 @@ const MainApp = () => {
 
   const [editingJob, setEditingJob] = useState(null);
   const [selectedJobFilter, setSelectedJobFilter] = useState(null);
+  const [jobSearchQuery, setJobSearchQuery] = useState('');
 
   // Handle view changes with URL updates
   const handleViewChange = (view) => {
@@ -429,6 +430,13 @@ const MainApp = () => {
   const getJobUnacknowledgedAlerts = (jobId) => {
     return alerts.filter(alert => alert.job_id === jobId && !alert.is_acknowledged);
   };
+
+  // Filter jobs based on search query
+  const filteredJobs = jobs.filter(job => {
+    const searchTerm = jobSearchQuery.toLowerCase();
+    return job.name.toLowerCase().includes(searchTerm) || 
+           (job.description && job.description.toLowerCase().includes(searchTerm));
+  });
 
   if (loading) {
     return (
@@ -930,6 +938,30 @@ const MainApp = () => {
             <span className="mr-2">💼</span> Your Monitoring Jobs
           </h2>
           <div className="flex items-center space-x-4">
+            {/* Search Bar */}
+            <div className="relative">
+              <svg className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search jobs..."
+                value={jobSearchQuery}
+                onChange={(e) => setJobSearchQuery(e.target.value)}
+                className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm w-64"
+              />
+              {jobSearchQuery && (
+                <button
+                  onClick={() => setJobSearchQuery('')}
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+            
             <button
               onClick={() => window.location.reload()}
               className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors flex items-center space-x-2 shadow-md hover:shadow-lg"
@@ -940,7 +972,7 @@ const MainApp = () => {
               <span>Refresh</span>
             </button>
             <div className="text-sm text-gray-500">
-              {jobs.length} {jobs.length === 1 ? 'job' : 'jobs'} configured
+              {filteredJobs.length} of {jobs.length} {jobs.length === 1 ? 'job' : 'jobs'} {jobSearchQuery ? 'found' : 'configured'}
             </div>
           </div>
         </div>
@@ -1249,7 +1281,7 @@ const MainApp = () => {
 
         {/* Jobs List with Alert Integration */}
         <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-          {jobs.map((job) => {
+          {filteredJobs.map((job) => {
             const jobAlerts = getJobAlerts(job.id);
             const unacknowledgedAlerts = getJobUnacknowledgedAlerts(job.id);
             
@@ -1345,8 +1377,8 @@ const MainApp = () => {
                       <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
                         <span className="mr-2">🚨</span> Recent Alerts ({jobAlerts.length})
                       </h4>
-                      <div className="space-y-3 max-h-60 overflow-y-auto">
-                        {jobAlerts.slice(0, 3).map((alert) => (
+                      <div className="space-y-3 max-h-48 overflow-y-auto pr-2 custom-scrollbar" style={{scrollbarWidth: 'thin', scrollbarColor: '#CBD5E0 #F7FAFC'}}>
+                        {jobAlerts.slice(0, 5).map((alert) => (
                           <div key={alert.id} className={`p-3 rounded-lg border-l-4 transition-all hover:shadow-sm ${
                             alert.is_acknowledged 
                               ? 'bg-green-50 border-green-400' 
@@ -1398,13 +1430,13 @@ const MainApp = () => {
                           </div>
                         ))}
                       </div>
-                      {jobAlerts.length > 3 && (
+                      {jobAlerts.length > 5 && (
                         <button
                           onClick={() => {
                             setSelectedJobFilter(job.id);
                             handleViewChange('alerts');
                           }}
-                          className="mt-2 text-xs text-blue-600 hover:text-blue-800"
+                          className="mt-3 text-xs text-blue-600 hover:text-blue-800 underline"
                         >
                           View all {jobAlerts.length} alerts →
                         </button>
@@ -1413,7 +1445,7 @@ const MainApp = () => {
                   )}
                   
                   {/* New Job Management Buttons */}
-                  <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div className="grid grid-cols-2 gap-2 mb-3 mt-6">
                     <button
                       onClick={() => runJobNow(job.id)}
                       className="inline-flex items-center justify-center px-2 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors text-xs font-medium"
@@ -1476,7 +1508,7 @@ const MainApp = () => {
           })}
         </div>
 
-        {jobs.length === 0 && (
+        {filteredJobs.length === 0 && jobs.length === 0 && (
           <div className="text-center py-20">
             <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-3xl p-12 border-2 border-dashed border-gray-300">
               <div className="text-8xl mb-6">🎯</div>
@@ -1490,6 +1522,25 @@ const MainApp = () => {
               >
                 <span className="text-2xl">🚀</span>
                 <span>Create Your First Job</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {filteredJobs.length === 0 && jobs.length > 0 && (
+          <div className="text-center py-20">
+            <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-3xl p-12 border-2 border-dashed border-gray-300">
+              <div className="text-8xl mb-6">🔍</div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-4">No Jobs Found</h3>
+              <p className="text-lg text-gray-600 mb-8 max-w-md mx-auto">
+                No jobs match your search for "{jobSearchQuery}". Try a different search term.
+              </p>
+              <button
+                onClick={() => setJobSearchQuery('')}
+                className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 flex items-center space-x-2 mx-auto"
+              >
+                <span className="text-xl">🔄</span>
+                <span>Clear Search</span>
               </button>
             </div>
           </div>
