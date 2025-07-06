@@ -855,13 +855,20 @@ class ScalableWorkerManager:
                             job_message = json.loads(queued_job.decode())
                             job_id = job_message.get("job_id")
                             if job_id:
-                                logger.info(f"Processing immediate run request for job {job_id}")
-                                # Get the specific job directly from API regardless of schedule
-                                job_data = self.get_job_for_immediate_run(job_id)
-                                if job_data:
-                                    immediate_jobs.append(job_data)
+                                # Use a lock to prevent duplicate immediate runs
+                                lock_key = f"immediate_run_lock:{job_id}"
+                                if self.redis_client.set(lock_key, self.worker_id, nx=True, ex=300):  # 5 min lock
+                                    logger.info(f"Processing immediate run request for job {job_id}")
+                                    # Get the specific job directly from API regardless of schedule
+                                    job_data = self.get_job_for_immediate_run(job_id)
+                                    if job_data:
+                                        immediate_jobs.append(job_data)
+                                    else:
+                                        logger.error(f"Could not fetch job {job_id} for immediate run")
+                                        # Release lock on error
+                                        self.redis_client.delete(lock_key)
                                 else:
-                                    logger.error(f"Could not fetch job {job_id} for immediate run")
+                                    logger.info(f"Job {job_id} immediate run already in progress, skipping")
                         except Exception as e:
                             logger.error(f"Error processing queued job: {e}")
                     
