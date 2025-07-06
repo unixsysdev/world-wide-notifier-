@@ -183,7 +183,7 @@ curl -H "Authorization: Bearer $API_KEY" \
 | Feature | Free | Premium | Premium Plus |
 |---------|------|---------|--------------|
 | **Jobs** | 3 | 10 | Unlimited |
-| **Frequency** | Hourly | 1 minute | 1 minute |
+| **Frequency** | Hourly | 10 minute | 1 minute |
 | **Alerts/Day** | 3 | 100 | Unlimited |
 | **API Keys** | 2 | 5 | 10 |
 | **Rate Limit** | 60/min | 120/min | 300/min |
