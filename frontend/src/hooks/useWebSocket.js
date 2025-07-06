@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-const WS_URL = API_URL.replace('http', 'ws');
+const WS_URL = API_URL.replace('https://', 'wss://').replace('http://', 'ws://');
 
 export const useWebSocket = (user, onMessage) => {
   const [isConnected, setIsConnected] = useState(false);
@@ -15,7 +15,14 @@ export const useWebSocket = (user, onMessage) => {
 
     try {
       const token = localStorage.getItem('token');
-      const wsUrl = `${WS_URL}/ws/dashboard/${user.id}?token=${encodeURIComponent(token)}`;
+      if (!token) {
+        console.log('No auth token available for WebSocket connection');
+        setConnectionStatus('No auth token');
+        return;
+      }
+      
+      // WebSocket endpoint - nginx strips /api prefix for non-v1 routes
+      const wsUrl = `${WS_URL}/api/ws/dashboard/${user.id}?token=${encodeURIComponent(token)}`;
       
       console.log('Connecting to WebSocket:', wsUrl);
       setConnectionStatus('Connecting...');

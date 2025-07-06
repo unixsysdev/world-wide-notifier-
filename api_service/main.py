@@ -1338,26 +1338,17 @@ async def run_job_now(job_id: str, current_user=Depends(get_current_user)):
             if job_data['user_id'] != current_user['id']:
                 raise HTTPException(status_code=403, detail="Access denied")
             
-            # Create a job run record
-            run_id = str(uuid.uuid4())
-            cur.execute("""
-                INSERT INTO job_runs (id, job_id, status, started_at)
-                VALUES (%s, %s, 'running', NOW())
-            """, (run_id, job_id))
-            conn.commit()
-            
+            # Don't create job_run record here - let worker manager handle it
             # Queue job for immediate processing
             job_message = {
                 "job_id": job_id,
                 "action": "run_now",
-                "run_id": run_id,
                 "user_id": current_user['id']
             }
             redis_client.lpush("job_queue", json.dumps(job_message))
     
     return {
         "message": f"Job '{job_data['name']}' queued for immediate execution",
-        "run_id": run_id,
         "status": "queued"
     }
 
