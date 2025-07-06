@@ -303,7 +303,7 @@ const LandingPage = ({ onShowLogin }) => {
                 </li>
                 <li className="flex items-center text-gray-700">
                   <span className="text-green-500 mr-3">✓</span>
-                  1-minute minimum frequency
+                  10-minute minimum frequency
                 </li>
                 <li className="flex items-center text-gray-700">
                   <span className="text-green-500 mr-3">✓</span>
