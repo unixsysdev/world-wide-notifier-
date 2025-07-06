@@ -190,23 +190,6 @@ services:
     networks:
       - monitoring_net
 
-  # E2E Test Service
-  test_service:
-    build: ./test_service
-    image: monitoring_test_service
-    environment:
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-internal-service-key-change-in-production}
-    depends_on:
-      - api_service
-      - browser_service
-      - llm_service
-      - notification_service
-      - redis
-    networks:
-      - monitoring_net
-    profiles:
-      - test
-
 volumes:
   postgres_data:
   redis_data:
