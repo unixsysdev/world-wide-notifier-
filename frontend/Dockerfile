@@ -17,5 +17,5 @@ RUN npm install -g serve
 
 EXPOSE 3000
 
-# Serve the production build
-CMD ["serve", "-s", "build", "-l", "3000"]
+# Serve the production build with SPA support (handles React Router)
+CMD ["serve", "-s", "build", "-l", "3000", "--single"]
