@@ -9,6 +9,13 @@ RUN npm install
 # Copy source code
 COPY . .
 
+# Build the application for production
+RUN npm run build
+
+# Install serve to serve the production build
+RUN npm install -g serve
+
 EXPOSE 3000
 
-CMD ["npm", "start"]
+# Serve the production build
+CMD ["serve", "-s", "build", "-l", "3000"]
