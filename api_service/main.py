@@ -220,6 +220,11 @@ class JobResponse(BaseModel):
     threshold_score: int
     is_active: bool
     notification_channel_ids: List[str] = []
+    alert_cooldown_minutes: int = 60
+    max_alerts_per_hour: int = 5
+    repeat_frequency_minutes: int = 60
+    max_repeats: int = 5
+    require_acknowledgment: bool = True
     created_at: str
 
 
@@ -1030,6 +1035,11 @@ async def get_jobs(
             threshold_score=job['threshold_score'],
             is_active=job['is_active'],
             notification_channel_ids=job['notification_channel_ids'] or [],
+            alert_cooldown_minutes=job['alert_cooldown_minutes'] or 60,
+            max_alerts_per_hour=job['max_alerts_per_hour'] or 5,
+            repeat_frequency_minutes=job.get('repeat_frequency_minutes', 60),
+            max_repeats=job.get('max_repeats', 5),
+            require_acknowledgment=job.get('require_acknowledgment', True),
             created_at=job['created_at'].isoformat()
         ))
     
@@ -2160,12 +2170,14 @@ async def get_jobs_api(
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, name, description, sources, prompt, frequency_minutes, 
-                       threshold_score, is_active, notification_channel_ids,
-                       alert_cooldown_minutes, max_alerts_per_hour, created_at, updated_at
-                FROM jobs 
-                WHERE user_id = %s
-                ORDER BY created_at DESC
+                SELECT j.id, j.name, j.description, j.sources, j.prompt, j.frequency_minutes, 
+                       j.threshold_score, j.is_active, j.notification_channel_ids,
+                       j.alert_cooldown_minutes, j.max_alerts_per_hour, j.created_at, j.updated_at,
+                       jns.repeat_frequency_minutes, jns.max_repeats, jns.require_acknowledgment
+                FROM jobs j
+                LEFT JOIN job_notification_settings jns ON j.id = jns.job_id
+                WHERE j.user_id = %s
+                ORDER BY j.created_at DESC
                 LIMIT %s OFFSET %s
                 """,
                 (user_data['user_id'], limit, offset)
@@ -2185,6 +2197,11 @@ async def get_jobs_api(
             threshold_score=job['threshold_score'],
             is_active=job['is_active'],
             notification_channel_ids=job['notification_channel_ids'] or [],
+            alert_cooldown_minutes=job['alert_cooldown_minutes'] or 60,
+            max_alerts_per_hour=job['max_alerts_per_hour'] or 5,
+            repeat_frequency_minutes=job.get('repeat_frequency_minutes', 60),
+            max_repeats=job.get('max_repeats', 5),
+            require_acknowledgment=job.get('require_acknowledgment', True),
             created_at=job['created_at'].isoformat()
         ))
     
@@ -2288,11 +2305,13 @@ async def get_job_api(
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, name, description, sources, prompt, frequency_minutes, 
-                       threshold_score, is_active, notification_channel_ids,
-                       alert_cooldown_minutes, max_alerts_per_hour, created_at, updated_at
-                FROM jobs 
-                WHERE id = %s AND user_id = %s
+                SELECT j.id, j.name, j.description, j.sources, j.prompt, j.frequency_minutes, 
+                       j.threshold_score, j.is_active, j.notification_channel_ids,
+                       j.alert_cooldown_minutes, j.max_alerts_per_hour, j.created_at, j.updated_at,
+                       jns.repeat_frequency_minutes, jns.max_repeats, jns.require_acknowledgment
+                FROM jobs j
+                LEFT JOIN job_notification_settings jns ON j.id = jns.job_id
+                WHERE j.id = %s AND j.user_id = %s
                 """,
                 (job_id, user_data['user_id'])
             )
@@ -2311,6 +2330,11 @@ async def get_job_api(
         threshold_score=job['threshold_score'],
         is_active=job['is_active'],
         notification_channel_ids=job['notification_channel_ids'] or [],
+        alert_cooldown_minutes=job['alert_cooldown_minutes'] or 60,
+        max_alerts_per_hour=job['max_alerts_per_hour'] or 5,
+        repeat_frequency_minutes=job.get('repeat_frequency_minutes', 60),
+        max_repeats=job.get('max_repeats', 5),
+        require_acknowledgment=job.get('require_acknowledgment', True),
         created_at=job['created_at'].isoformat()
     )
 
