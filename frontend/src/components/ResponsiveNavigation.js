@@ -8,7 +8,8 @@ const ResponsiveNavigation = ({
   isDarkMode, 
   toggleDarkMode, 
   logout,
-  setSelectedJobFilter 
+  setSelectedJobFilter,
+  failedJobsCount 
 }) => {
   return (
     <nav className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
@@ -76,6 +77,11 @@ const ResponsiveNavigation = ({
                 }`}
               >
                 🔧 Failed Jobs
+                {failedJobsCount > 0 && (
+                  <span className="ml-1 bg-red-500 text-white text-xs rounded-full px-2 py-0.5">
+                    {failedJobsCount}
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => handleViewChange('api')}
@@ -107,7 +113,9 @@ const ResponsiveNavigation = ({
                   🚨 Alerts{alerts.filter(a => !a.is_acknowledged).length > 0 ? ` (${alerts.filter(a => !a.is_acknowledged).length})` : ''}
                 </option>
                 <option value="settings">⚙️ Settings</option>
-                <option value="failed-jobs">🔧 Failed Jobs</option>
+                <option value="failed-jobs">
+                  🔧 Failed Jobs{failedJobsCount > 0 ? ` (${failedJobsCount})` : ''}
+                </option>
                 <option value="api">🔌 API</option>
               </select>
             </div>

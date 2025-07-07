@@ -86,95 +86,6 @@ def clean_html_content(html_content):
         print(f"HTML cleaning error: {e}")
         return html_content[:8000]
 
-def robust_json_parse(response_text):
-    """Robust JSON parsing with multiple fallback strategies"""
-    
-    def clean_json_text(text):
-        """Clean and repair common JSON issues"""
-        # Remove leading/trailing whitespace
-        text = text.strip()
-        
-        # Remove trailing commas before closing braces/brackets
-        text = re.sub(r',(\s*[}\]])', r'\1', text)
-        
-        # Fix unquoted keys (but be careful with already quoted ones)
-        # This regex looks for word characters followed by : that aren't already quoted
-        text = re.sub(r'(?<!")(\b\w+)(?=\s*:)', r'"\1"', text)
-        
-        # Fix double-quoted keys that got over-quoted
-        text = re.sub(r'""(\w+)""', r'"\1"', text)
-        
-        return text
-    
-    def extract_with_regex(text):
-        """Extract key fields using regex as last resort"""
-        try:
-            # Try to extract the main fields we need
-            score_match = re.search(r'"?relevance_score"?\s*:\s*(\d+)', text)
-            title_match = re.search(r'"?title"?\s*:\s*"([^"]*)"', text)
-            summary_match = re.search(r'"?summary"?\s*:\s*"([^"]*)"', text)
-            confidence_match = re.search(r'"?confidence"?\s*:\s*([0-9.]+)', text)
-            
-            # Extract key points array
-            key_points = []
-            key_points_match = re.search(r'"?key_points"?\s*:\s*\[(.*?)\]', text, re.DOTALL)
-            if key_points_match:
-                points_text = key_points_match.group(1)
-                # Extract individual quoted strings
-                points = re.findall(r'"([^"]*)"', points_text)
-                key_points = points[:5]  # Limit to 5 points
-            
-            if score_match:
-                return {
-                    "relevance_score": min(100, max(0, int(score_match.group(1)))),
-                    "title": title_match.group(1) if title_match else "Analysis Result",
-                    "summary": summary_match.group(1) if summary_match else "Content analyzed via fallback parsing",
-                    "key_points": key_points if key_points else ["Analysis completed with fallback parsing"],
-                    "confidence": min(1.0, max(0.0, float(confidence_match.group(1)))) if confidence_match else 0.3
-                }
-        except Exception as e:
-            print(f"Regex extraction failed: {e}")
-        
-        return None
-    
-    # Strategy 1: Look for JSON in code blocks
-    patterns = [
-        r'```(?:json)?\s*(\{.*?\})\s*```',  # JSON in code blocks
-        r'```(?:json)?\s*(\[.*?\])\s*```',  # Array in code blocks
-        r'(\{[^{}]*"relevance_score"[^{}]*\})',  # Look for objects with relevance_score
-        r'(\{.*?\})',  # Any JSON object
-        r'(\[.*?\])'   # Any JSON array
-    ]
-    
-    for pattern in patterns:
-        matches = re.finditer(pattern, response_text, re.DOTALL)
-        for match in matches:
-            json_candidate = match.group(1)
-            
-            # Try parsing as-is first
-            try:
-                data = json.loads(json_candidate)
-                if isinstance(data, list) and len(data) > 0:
-                    data = data[0]
-                if isinstance(data, dict) and 'relevance_score' in data:
-                    return data
-            except json.JSONDecodeError:
-                pass
-            
-            # Try cleaning and parsing
-            try:
-                cleaned = clean_json_text(json_candidate)
-                data = json.loads(cleaned)
-                if isinstance(data, list) and len(data) > 0:
-                    data = data[0]
-                if isinstance(data, dict):
-                    return data
-            except json.JSONDecodeError:
-                continue
-    
-    # Last resort: regex extraction
-    return extract_with_regex(response_text)
-
 @app.post("/analyze", response_model=AnalysisResponse)
 async def analyze_content(analysis_request: AnalysisRequest, request: Request):
     # Verify internal API key
@@ -246,67 +157,70 @@ Scoring Guidelines:
             
             print(f"LLM response: {response_text[:200]}...")
             
-            # Use robust JSON parsing
-            analysis_data = robust_json_parse(response_text)
+            # Extract JSON from response - handle markdown code blocks
+            # Updated regex to handle both JSON objects and arrays
+            json_block_match = re.search(r'```(?:json)?\s*(\{.*?\}|\[.*?\])\s*```', response_text, re.DOTALL)
+            if json_block_match:
+                json_text = json_block_match.group(1)
+            else:
+                # Fallback to finding any JSON object or array
+                json_match = re.search(r'(\{.*\}|\[.*\])', response_text, re.DOTALL)
+                json_text = json_match.group() if json_match else None
             
-            if analysis_data:
+            if json_text:
                 try:
-                    # Validate and sanitize the data
+                    analysis_data = json.loads(json_text)
+                    # Handle both single object and array responses
+                    if isinstance(analysis_data, list) and len(analysis_data) > 0:
+                        analysis_data = analysis_data[0]  # Take the first item if it's an array
                     score = analysis_data.get('relevance_score', 0)
-                    if not isinstance(score, (int, float)):
-                        score = 0
-                    score = max(0, min(100, int(score)))  # Clamp between 0-100
-                    
-                    title = str(analysis_data.get('title', 'Analysis Result'))[:200]
-                    summary = str(analysis_data.get('summary', 'Content analyzed'))[:1000]
-                    
-                    key_points = analysis_data.get('key_points', ['Analysis completed'])
-                    if not isinstance(key_points, list):
-                        key_points = ['Analysis completed']
-                    key_points = [str(point)[:200] for point in key_points[:10]]  # Limit items and length
-                    
-                    confidence = analysis_data.get('confidence', 0.5)
-                    if not isinstance(confidence, (int, float)):
-                        confidence = 0.5
-                    confidence = max(0.0, min(1.0, float(confidence)))
-                    
                     print(f"Analysis score: {score}")
                     
                     return AnalysisResponse(
                         relevance_score=score,
-                        title=title,
-                        summary=summary,
-                        key_points=key_points,
-                        confidence=confidence,
+                        title=analysis_data.get('title', 'Analysis Result'),
+                        summary=analysis_data.get('summary', 'Content analyzed'),
+                        key_points=analysis_data.get('key_points', ['Analysis completed']),
+                        confidence=analysis_data.get('confidence', 0.5),
                         success=True
                     )
-                    
-                except Exception as e:
-                    print(f"Data validation error: {e}")
+                except json.JSONDecodeError as e:
+                    print(f"JSON parsing error: {e}")
+                    print(f"Raw JSON text: {json_text[:200]}...")
                     return AnalysisResponse(
                         relevance_score=0,
-                        title="Data Validation Error",
-                        summary=f"Error validating analysis data: {str(e)}",
-                        key_points=["Data validation failed"],
+                        title="JSON Parsing Error",
+                        summary=f"Error parsing LLM response: {str(e)}",
+                        key_points=["JSON parsing failed"],
                         confidence=0.0,
                         success=False,
-                        error=f"Data validation failed: {str(e)}"
+                        error=f"JSON parsing failed: {str(e)}"
+                    )
+                except Exception as e:
+                    print(f"Analysis data processing error: {e}")
+                    return AnalysisResponse(
+                        relevance_score=0,
+                        title="Analysis Processing Error",
+                        summary=f"Error processing analysis data: {str(e)}",
+                        key_points=["Analysis processing failed"],
+                        confidence=0.0,
+                        success=False,
+                        error=f"Analysis processing failed: {str(e)}"
                     )
             else:
-                print("No valid JSON found in response")
+                print("No JSON found in response")
                 print(f"Raw response: {response_text[:500]}...")
                 return AnalysisResponse(
                     relevance_score=0,
                     title="Parsing Error",
-                    summary="Could not parse LLM response - no valid JSON found",
+                    summary="Could not parse LLM response - no JSON found",
                     key_points=["JSON parsing failed"],
                     confidence=0.0,
                     success=False,
-                    error="JSON parsing failed - no valid JSON found in response"
+                    error="JSON parsing failed - no JSON found in response"
                 )
         else:
             print(f"OpenRouter API error: {response.status_code}")
-            error_text = response.text if hasattr(response, 'text') else str(response.status_code)
             return AnalysisResponse(
                 relevance_score=0,
                 title="API Error",
@@ -314,7 +228,7 @@ Scoring Guidelines:
                 key_points=["API failed"],
                 confidence=0.0,
                 success=False,
-                error=f"API error: {response.status_code} - {error_text}"
+                error=f"API error: {response.status_code}"
             )
         
     except Exception as e:

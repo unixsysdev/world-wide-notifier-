@@ -7,11 +7,30 @@ const FailedJobs = ({ user, isDarkMode, toggleDarkMode, logout, onEditJob, onNav
   const [failedJobs, setFailedJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedJobs, setExpandedJobs] = useState(new Set());
-
   const [retryingJobs, setRetryingJobs] = useState(new Set());
+  
+  // Failed Jobs Edit Form State
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editingJob, setEditingJob] = useState(null);
+  const [channels, setChannels] = useState([]);
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    sources: '',
+    prompt: '',
+    frequency_minutes: 60,
+    threshold_score: 75,
+    notification_channel_ids: [],
+    alert_cooldown_minutes: 60,
+    max_alerts_per_hour: 5,
+    repeat_frequency_minutes: 60,
+    max_repeats: 5,
+    require_acknowledgment: true
+  });
 
   useEffect(() => {
     fetchFailedJobs();
+    fetchChannels();
   }, []);
 
   const fetchFailedJobs = async () => {
@@ -20,7 +39,12 @@ const FailedJobs = ({ user, isDarkMode, toggleDarkMode, logout, onEditJob, onNav
       const response = await axios.get(`${API_URL}/failed-jobs`, {
         params: { resolved: false }
       });
-      setFailedJobs(response.data.failed_jobs || []);
+      
+      // Deduplicate failed jobs by grouping similar failures
+      const rawFailedJobs = response.data.failed_jobs || [];
+      const deduplicatedJobs = deduplicateFailedJobs(rawFailedJobs);
+      
+      setFailedJobs(deduplicatedJobs);
     } catch (error) {
       console.error('Error fetching failed jobs:', error);
     } finally {
@@ -28,10 +52,52 @@ const FailedJobs = ({ user, isDarkMode, toggleDarkMode, logout, onEditJob, onNav
     }
   };
 
+  // Deduplicate failed jobs by grouping similar failures
+  const deduplicateFailedJobs = (jobs) => {
+    const groupedJobs = new Map();
+    
+    jobs.forEach(job => {
+      // Create a unique key for grouping similar failures
+      const groupKey = `${job.job_id}-${job.source_url}-${job.failure_stage}-${job.error_message}`;
+      
+      if (groupedJobs.has(groupKey)) {
+        const existingGroup = groupedJobs.get(groupKey);
+        existingGroup.occurrence_count += 1;
+        existingGroup.duplicate_ids.push(job.id);
+        existingGroup.total_retry_count += job.retry_count;
+        
+        // Keep the most recent failure as the main record
+        if (new Date(job.created_at) > new Date(existingGroup.created_at)) {
+          existingGroup.created_at = job.created_at;
+          existingGroup.last_retry_at = job.last_retry_at;
+        }
+      } else {
+        // First occurrence of this type of failure
+        groupedJobs.set(groupKey, {
+          ...job,
+          occurrence_count: 1,
+          duplicate_ids: [job.id], // Track all IDs for bulk operations
+          total_retry_count: job.retry_count,
+          group_key: groupKey
+        });
+      }
+    });
+    
+    return Array.from(groupedJobs.values());
+  };
+
+  const fetchChannels = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/notification-channels`);
+      setChannels(response.data);
+    } catch (error) {
+      console.error('Error fetching channels:', error);
+    }
+  };
+
   const editJob = async (jobId, failedJobId) => {
     try {
       console.log('Edit job clicked:', jobId, failedJobId);
-      console.log('onEditJob function:', onEditJob);
       
       // First, fetch the job to make sure it exists
       const response = await axios.get(`${API_URL}/jobs/${jobId}`);
@@ -39,13 +105,23 @@ const FailedJobs = ({ user, isDarkMode, toggleDarkMode, logout, onEditJob, onNav
       
       console.log('Job data fetched:', job);
       
-      // Trigger edit mode - this will show the modal form on current page
-      if (onEditJob) {
-        console.log('Calling onEditJob with:', job);
-        onEditJob(job);
-      } else {
-        console.error('onEditJob is not defined!');
-      }
+      // Set up the edit form with job data
+      setEditingJob(job);
+      setFormData({
+        name: job.name,
+        description: job.description || '',
+        sources: job.sources.join('\n'),
+        prompt: job.prompt,
+        frequency_minutes: job.frequency_minutes,
+        threshold_score: job.threshold_score,
+        notification_channel_ids: job.notification_channel_ids || [],
+        alert_cooldown_minutes: job.alert_cooldown_minutes || 60,
+        max_alerts_per_hour: job.max_alerts_per_hour || 5,
+        repeat_frequency_minutes: job.repeat_frequency_minutes || 60,
+        max_repeats: job.max_repeats || 5,
+        require_acknowledgment: job.require_acknowledgment !== false
+      });
+      setShowEditForm(true);
     } catch (error) {
       console.error('Error editing job:', error);
       if (error.response?.status === 404) {
@@ -95,6 +171,83 @@ const FailedJobs = ({ user, isDarkMode, toggleDarkMode, logout, onEditJob, onNav
       console.error('Error deleting failed job:', error);
       alert('❌ Failed to delete failed job record');
     }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    try {
+      const jobData = {
+        name: formData.name,
+        description: formData.description,
+        sources: formData.sources.split('\n').filter(url => url.trim()),
+        prompt: formData.prompt,
+        frequency_minutes: parseInt(formData.frequency_minutes),
+        threshold_score: parseInt(formData.threshold_score),
+        notification_channel_ids: formData.notification_channel_ids,
+        alert_cooldown_minutes: parseInt(formData.alert_cooldown_minutes),
+        max_alerts_per_hour: parseInt(formData.max_alerts_per_hour),
+        repeat_frequency_minutes: parseInt(formData.repeat_frequency_minutes || 60),
+        max_repeats: parseInt(formData.max_repeats || 5),
+        require_acknowledgment: formData.require_acknowledgment !== false
+      };
+
+      await axios.put(`${API_URL}/jobs/${editingJob.id}`, jobData);
+      
+      alert('✅ Job updated successfully!');
+      
+      // Reset form and close modal
+      setFormData({
+        name: '',
+        description: '',
+        sources: '',
+        prompt: '',
+        frequency_minutes: 60,
+        threshold_score: 75,
+        notification_channel_ids: [],
+        alert_cooldown_minutes: 60,
+        max_alerts_per_hour: 5,
+        repeat_frequency_minutes: 60,
+        max_repeats: 5,
+        require_acknowledgment: true
+      });
+      setShowEditForm(false);
+      setEditingJob(null);
+      
+    } catch (error) {
+      console.error('Error saving job:', error);
+      
+      let errorMessage = 'Failed to save job. Please try again.';
+      
+      if (error.response?.status === 403) {
+        errorMessage = error.response.data.detail || 'Permission denied. Check your subscription limits.';
+      } else if (error.response?.status === 404) {
+        errorMessage = 'Job not found. It may have been deleted.';
+      } else if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail;
+      }
+      
+      alert(errorMessage);
+    }
+  };
+
+  const handleInputChange = (e) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value
+    });
+  };
+
+  const handleChannelSelectionChange = (channelId) => {
+    const currentSelected = formData.notification_channel_ids;
+    const newSelected = currentSelected.includes(channelId)
+      ? currentSelected.filter(id => id !== channelId)
+      : [...currentSelected, channelId];
+    
+    setFormData({
+      ...formData,
+      notification_channel_ids: newSelected
+    });
   };
 
 
@@ -203,6 +356,11 @@ const FailedJobs = ({ user, isDarkMode, toggleDarkMode, logout, onEditJob, onNav
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStageColor(job.failure_stage)}`}>
                         {getStageIcon(job.failure_stage)} {job.failure_stage.replace('_', ' ')}
                       </span>
+                      {job.occurrence_count > 1 && (
+                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200">
+                          🔢 {job.occurrence_count} occurrences
+                        </span>
+                      )}
                       {job.resolved && (
                         <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
                           ✅ Resolved
@@ -322,6 +480,232 @@ const FailedJobs = ({ user, isDarkMode, toggleDarkMode, logout, onEditJob, onNav
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Edit Form Modal */}
+      {showEditForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                  Edit Job: {editingJob?.name}
+                </h2>
+                <button
+                  onClick={() => setShowEditForm(false)}
+                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Job Name
+                  </label>
+                  <input
+                    type="text"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Description
+                  </label>
+                  <textarea
+                    name="description"
+                    value={formData.description}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                    rows="3"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Sources (one per line)
+                  </label>
+                  <textarea
+                    name="sources"
+                    value={formData.sources}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                    rows="5"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Analysis Prompt
+                  </label>
+                  <textarea
+                    name="prompt"
+                    value={formData.prompt}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                    rows="4"
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Frequency (minutes)
+                    </label>
+                    <input
+                      type="number"
+                      name="frequency_minutes"
+                      value={formData.frequency_minutes}
+                      onChange={handleInputChange}
+                      min="5"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Alert Threshold (0-100)
+                    </label>
+                    <input
+                      type="number"
+                      name="threshold_score"
+                      value={formData.threshold_score}
+                      onChange={handleInputChange}
+                      min="0"
+                      max="100"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Alert Cooldown (minutes)
+                    </label>
+                    <input
+                      type="number"
+                      name="alert_cooldown_minutes"
+                      value={formData.alert_cooldown_minutes}
+                      onChange={handleInputChange}
+                      min="1"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Max Alerts per Hour
+                    </label>
+                    <input
+                      type="number"
+                      name="max_alerts_per_hour"
+                      value={formData.max_alerts_per_hour}
+                      onChange={handleInputChange}
+                      min="1"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Repeat Frequency (minutes)
+                    </label>
+                    <input
+                      type="number"
+                      name="repeat_frequency_minutes"
+                      value={formData.repeat_frequency_minutes}
+                      onChange={handleInputChange}
+                      min="1"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Max Repeats
+                    </label>
+                    <input
+                      type="number"
+                      name="max_repeats"
+                      value={formData.max_repeats}
+                      onChange={handleInputChange}
+                      min="1"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      name="require_acknowledgment"
+                      checked={formData.require_acknowledgment}
+                      onChange={(e) => setFormData({...formData, require_acknowledgment: e.target.checked})}
+                      className="mr-2 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">Require manual acknowledgment</span>
+                  </label>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Notification Channels
+                  </label>
+                  <div className="space-y-2 max-h-32 overflow-y-auto border border-gray-300 dark:border-gray-600 rounded-lg p-3">
+                    {channels.map(channel => (
+                      <label key={channel.id} className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={formData.notification_channel_ids.includes(channel.id)}
+                          onChange={() => handleChannelSelectionChange(channel.id)}
+                          className="mr-2"
+                        />
+                        <div className="flex flex-col">
+                          <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">
+                            {channel.name || channel.config?.email || 'Unnamed'} ({channel.type || 'Unknown'})
+                          </span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            {channel.config?.email || channel.config?.webhook_url || 'Not configured'}
+                          </span>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowEditForm(false)}
+                    className="px-4 py-2 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium"
+                  >
+                    Update Job
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
         </div>
       )}
     </div>

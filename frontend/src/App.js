@@ -104,6 +104,7 @@ const MainApp = () => {
       fetchAlerts();
       fetchChannels();
       fetchSubscription();
+      fetchFailedJobsCount();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
@@ -120,6 +121,8 @@ const MainApp = () => {
     try {
       const response = await axios.get(`${API_URL}/jobs?limit=1000`);
       setJobs(response.data);
+      // Refresh failed jobs count when jobs data changes
+      fetchFailedJobsCount();
     } catch (error) {
       console.error('Error fetching jobs:', error);
     } finally {
@@ -162,6 +165,17 @@ const MainApp = () => {
     }
   };
 
+  const fetchFailedJobsCount = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/failed-jobs`, {
+        params: { resolved: false }
+      });
+      setFailedJobsCount(response.data.failed_jobs?.length || 0);
+    } catch (error) {
+      console.error('Error fetching failed jobs count:', error);
+    }
+  };
+
 
 
   const acknowledgeAlert = async (alertId) => {
@@ -188,6 +202,7 @@ const MainApp = () => {
 
   // Bulk operations
   const [selectedAlerts, setSelectedAlerts] = useState([]);
+  const [failedJobsCount, setFailedJobsCount] = useState(0);
 
   const toggleAlertSelection = (alertId) => {
     setSelectedAlerts(prev => 
@@ -304,21 +319,6 @@ const MainApp = () => {
         max_repeats: 5,
         require_acknowledgment: true
       });
-      // Reset form
-      setFormData({
-        name: '',
-        description: '',
-        sources: '',
-        prompt: '',
-        frequency_minutes: 60,
-        threshold_score: 75,
-        notification_channel_ids: [],
-        alert_cooldown_minutes: 60,
-        max_alerts_per_hour: 5,
-        repeat_frequency_minutes: 60,
-        max_repeats: 5,
-        require_acknowledgment: true
-      });
       setShowCreateForm(false);
       setEditingJob(null);
       fetchJobs();
@@ -373,8 +373,6 @@ const MainApp = () => {
   };
 
   const editJob = (job) => {
-    console.log('🚀 App.js editJob called with:', job);
-    console.log('🚀 About to set showCreateForm to true');
     setEditingJob(job);
     setFormData({
       name: job.name,
@@ -390,8 +388,7 @@ const MainApp = () => {
       max_repeats: job.max_repeats || 5,
       require_acknowledgment: job.require_acknowledgment !== false
     });
-    setTimeout(() => setShowCreateForm(true), 0);
-    console.log('🚀 setShowCreateForm(true) called with setTimeout');
+    setShowCreateForm(true);
   };
 
   const pauseResumeJob = async (jobId, isActive) => {
@@ -513,40 +510,51 @@ const MainApp = () => {
 
   if (currentView === 'failed-jobs') {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
-        <ResponsiveNavigation 
-          currentView={currentView}
-          handleViewChange={handleViewChange}
-          alerts={alerts}
-          user={user}
-          isDarkMode={isDarkMode}
-          toggleDarkMode={toggleDarkMode}
-          logout={logout}
-        />
-        <FailedJobs 
-          user={user} 
-          logout={logout} 
-          isDarkMode={isDarkMode}
-          toggleDarkMode={toggleDarkMode}
-          onEditJob={editJob}
-          onNavigate={handleViewChange}
-        />
-      </div>
+      <>
+        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
+          <ResponsiveNavigation 
+            currentView={currentView}
+            handleViewChange={handleViewChange}
+            alerts={alerts}
+            user={user}
+            isDarkMode={isDarkMode}
+            toggleDarkMode={toggleDarkMode}
+            logout={logout}
+            failedJobsCount={failedJobsCount}
+          />
+          <FailedJobs 
+            user={user} 
+            logout={logout} 
+            isDarkMode={isDarkMode}
+            toggleDarkMode={toggleDarkMode}
+            onEditJob={editJob}
+            onNavigate={handleViewChange}
+          />
+        </div>
+
+
+      </>
     );
   }
 
   if (currentView === 'api') {
-    return <APIManagement 
-      user={user} 
-      logout={logout} 
-      userSubscription={userSubscription} 
-      setCurrentView={handleViewChange} 
-      currentView={currentView}
-      alerts={alerts}
-      isDarkMode={isDarkMode}
-      toggleDarkMode={toggleDarkMode}
-      onBack={() => handleViewChange('dashboard')} 
-    />;
+    return (
+      <>
+        <APIManagement 
+          user={user} 
+          logout={logout} 
+          userSubscription={userSubscription} 
+          setCurrentView={handleViewChange} 
+          currentView={currentView}
+          alerts={alerts}
+          isDarkMode={isDarkMode}
+          toggleDarkMode={toggleDarkMode}
+          onBack={() => handleViewChange('dashboard')} 
+        />
+
+
+      </>
+    );
   }
 
   if (currentView === 'live') {
@@ -561,6 +569,7 @@ const MainApp = () => {
           toggleDarkMode={toggleDarkMode}
           logout={logout}
           setSelectedJobFilter={setSelectedJobFilter}
+          failedJobsCount={failedJobsCount}
         />
 
         <div className="container mx-auto px-4 py-8">
@@ -595,6 +604,7 @@ const MainApp = () => {
           toggleDarkMode={toggleDarkMode}
           logout={logout}
           setSelectedJobFilter={setSelectedJobFilter}
+          failedJobsCount={failedJobsCount}
         />
 
         <div className="container mx-auto px-4 py-8">
@@ -809,6 +819,7 @@ const MainApp = () => {
         isDarkMode={isDarkMode}
         toggleDarkMode={toggleDarkMode}
         logout={logout}
+        failedJobsCount={failedJobsCount}
       />
 
       <div className="container mx-auto px-4 py-8">
@@ -1312,9 +1323,8 @@ const MainApp = () => {
         </div>
       )}
 
-      {/* Create Job Form Modal - Available Globally */}
-      {console.log('🚀 showCreateForm state:', showCreateForm) || null}
-      {showCreateForm && console.log('🚀 MODAL SHOULD RENDER NOW!') && (
+      {/* Create Job Form Modal */}
+      {showCreateForm && (
         <div className="fixed inset-0 bg-black bg-opacity-60 overflow-y-auto h-full w-full z-50 backdrop-blur-sm">
           <div className="relative top-10 mx-auto p-0 border-0 w-11/12 md:w-4/5 lg:w-3/4 xl:w-2/3 shadow-2xl rounded-2xl bg-white dark:bg-gray-800 max-h-[90vh] overflow-y-auto">
             <div className="mt-3">
