@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="alertGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3B82F6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1E40AF;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="50" cy="50" r="45" fill="url(#alertGradient)" stroke="#1E40AF" stroke-width="2"/>
+  
+  <!-- Alert/Bell icon -->
+  <path d="M50 20 C42 20, 36 26, 36 34 L36 48 C36 52, 34 56, 30 58 L30 62 L70 62 L70 58 C66 56, 64 52, 64 48 L64 34 C64 26, 58 20, 50 20 Z" fill="white"/>
+  
+  <!-- Bell clapper -->
+  <circle cx="50" cy="68" r="4" fill="white"/>
+  
+  <!-- Alert dot -->
+  <circle cx="62" cy="28" r="6" fill="#EF4444" stroke="white" stroke-width="2"/>
+  
+  <!-- Shine effect -->
+  <ellipse cx="42" cy="35" rx="8" ry="12" fill="rgba(255,255,255,0.3)" transform="rotate(-20 42 35)"/>
+</svg>

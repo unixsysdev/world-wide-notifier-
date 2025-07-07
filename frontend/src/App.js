@@ -373,6 +373,8 @@ const MainApp = () => {
   };
 
   const editJob = (job) => {
+    console.log('🚀 App.js editJob called with:', job);
+    console.log('🚀 About to set showCreateForm to true');
     setEditingJob(job);
     setFormData({
       name: job.name,
@@ -388,7 +390,8 @@ const MainApp = () => {
       max_repeats: job.max_repeats || 5,
       require_acknowledgment: job.require_acknowledgment !== false
     });
-    setShowCreateForm(true);
+    setTimeout(() => setShowCreateForm(true), 0);
+    console.log('🚀 setShowCreateForm(true) called with setTimeout');
   };
 
   const pauseResumeJob = async (jobId, isActive) => {
@@ -957,307 +960,7 @@ const MainApp = () => {
           </div>
         </div>
 
-        {/* Create Job Form */}
-        {showCreateForm && (
-          <div className="fixed inset-0 bg-black bg-opacity-60 overflow-y-auto h-full w-full z-50 backdrop-blur-sm">
-            <div className="relative top-10 mx-auto p-0 border-0 w-11/12 md:w-4/5 lg:w-3/4 xl:w-2/3 shadow-2xl rounded-2xl bg-white dark:bg-gray-800 max-h-[90vh] overflow-y-auto">
-              <div className="mt-3">
-                <div className="flex justify-between items-center mb-6 bg-gradient-to-r from-blue-500 to-indigo-600 text-white p-6 rounded-t-2xl">
-                  <h3 className="text-2xl font-bold text-white flex items-center">
-                    <span className="mr-3">{editingJob ? '✏️' : '🚀'}</span> 
-                    {editingJob ? 'Edit Monitoring Job' : 'Create New Monitoring Job'}
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => setShowCreateForm(false)}
-                    className="text-white hover:text-gray-200 transition-colors duration-200 p-2 rounded-full hover:bg-white hover:bg-opacity-20"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-                
-                <div className="p-6">
-                <form onSubmit={handleSubmit} className="space-y-8">
-                  {/* Basic Information */}
-                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-700 dark:to-gray-700 rounded-xl p-6 border border-blue-100 dark:border-gray-600">
-                    <h4 className="text-lg font-bold text-gray-800 dark:text-white mb-4 flex items-center">
-                      <span className="mr-2">📝</span> Basic Information
-                    </h4>
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Job Name *</label>
-                        <input
-                          type="text"
-                          name="name"
-                          value={formData.name}
-                          onChange={handleInputChange}
-                          required
-                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Description</label>
-                        <input
-                          type="text"
-                          name="description"
-                          value={formData.description}
-                          onChange={handleInputChange}
-                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
-                        />
-                      </div>
-                    </div>
-                  </div>
 
-                  {/* Sources and Monitoring */}
-                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-700 dark:to-gray-700 rounded-xl p-6 border border-blue-100 dark:border-gray-600">
-                    <h4 className="text-lg font-bold text-gray-800 dark:text-white mb-4 flex items-center">
-                      <span className="mr-2">🔍</span> Sources & Monitoring
-                    </h4>
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Sources (one per line) *</label>
-                        <textarea
-                          name="sources"
-                          value={formData.sources}
-                          onChange={handleInputChange}
-                          required
-                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
-                          rows="3"
-                          placeholder="https://example.com/news&#10;https://another-site.com/feed"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Analysis Prompt *</label>
-                        <textarea
-                          name="prompt"
-                          value={formData.prompt}
-                          onChange={handleInputChange}
-                          required
-                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
-                          rows="3"
-                          placeholder="Analyze this content for anything that could impact oil prices..."
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Frequency and Thresholds */}
-                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-700 dark:to-gray-700 rounded-xl p-6 border border-blue-100 dark:border-gray-600">
-                    <h4 className="text-lg font-bold text-gray-800 dark:text-white mb-4 flex items-center">
-                      <span className="mr-2">⏱️</span> Frequency & Thresholds
-                    </h4>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">
-                          Check Frequency (minutes)
-                          {userSubscription && (
-                            <span className="text-xs text-gray-500 block">
-                              (min: {userSubscription.min_frequency_minutes})
-                            </span>
-                          )}
-                        </label>
-                        <input
-                          type="number"
-                          name="frequency_minutes"
-                          value={formData.frequency_minutes}
-                          onChange={handleInputChange}
-                          min={userSubscription?.min_frequency_minutes || 5}
-                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
-                        />
-                        {userSubscription?.tier === 'free' && (
-                          <p className="mt-1 text-xs text-gray-500">
-                            Free tier: Hourly checks minimum. Upgrade for minute-level monitoring.
-                          </p>
-                        )}
-                      </div>
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Alert Threshold (0-100)</label>
-                        <input
-                          type="number"
-                          name="threshold_score"
-                          value={formData.threshold_score}
-                          onChange={handleInputChange}
-                          min="0"
-                          max="100"
-                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">
-                          Alert Cooldown (minutes)
-                          <span className="text-xs text-gray-500 block">
-                            (prevent duplicates)
-                          </span>
-                        </label>
-                        <input
-                          type="number"
-                          name="alert_cooldown_minutes"
-                          value={formData.alert_cooldown_minutes}
-                          onChange={handleInputChange}
-                          min="1"
-                          max="1440"
-                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">
-                          Max Alerts/Hour
-                          <span className="text-xs text-gray-500 block">
-                            (rate limiting)
-                          </span>
-                        </label>
-                        <input
-                          type="number"
-                          name="max_alerts_per_hour"
-                          value={formData.max_alerts_per_hour}
-                          onChange={handleInputChange}
-                          min="1"
-                          max="60"
-                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Enhanced Notification Settings */}
-                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-700 dark:to-gray-700 rounded-xl p-6 border border-blue-100 dark:border-gray-600">
-                    <h4 className="text-lg font-bold text-gray-800 dark:text-white mb-4 flex items-center">
-                      <span className="mr-2">🔔</span> Notification Settings
-                    </h4>
-                    
-                    {/* Notification Channel Selection */}
-                    {channels.length > 0 ? (
-                      <div className="mb-4">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          Notification Channels
-                        </label>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                          {channels.map((channel) => (
-                            <div key={channel.id} className="flex items-center p-2 border dark:border-gray-600 rounded-md dark:bg-gray-700">
-                              <input
-                                type="checkbox"
-                                id={`channel-${channel.id}`}
-                                checked={formData.notification_channel_ids.includes(channel.id)}
-                                onChange={() => handleChannelSelectionChange(channel.id)}
-                                className="mr-3"
-                              />
-                              <label htmlFor={`channel-${channel.id}`} className="text-sm text-gray-700 dark:text-gray-200 flex-1">
-                                <span className="font-medium capitalize">{channel.channel_type}</span>
-                                <span className="text-gray-500 dark:text-gray-400 block text-xs">
-                                  {channel.config.email ? channel.config.email : 
-                                   channel.config.webhook_url ? channel.config.webhook_url.substring(0, 40) + '...' : 
-                                   'Not configured'}
-                                </span>
-                              </label>
-                            </div>
-                          ))}
-                        </div>
-                        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                          Select which channels to send alerts to. You can configure channels in Settings.
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="text-center p-4 border border-dashed border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700">
-                        <p className="text-sm text-gray-500 dark:text-gray-400">No notification channels configured</p>
-                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                          Go to Settings to set up email, Teams, or other notification channels
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Repeat Settings */}
-                    <div className="grid grid-cols-2 gap-4 mt-4">
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">
-                          Repeat Frequency (minutes)
-                          <span className="text-xs text-gray-500 block">
-                            (if not acknowledged)
-                          </span>
-                        </label>
-                        <input
-                          type="number"
-                          name="repeat_frequency_minutes"
-                          value={formData.repeat_frequency_minutes || 60}
-                          onChange={handleInputChange}
-                          min="5"
-                          max="1440"
-                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">
-                          Max Repeats
-                          <span className="text-xs text-gray-500 block">
-                            (before stopping)
-                          </span>
-                        </label>
-                        <input
-                          type="number"
-                          name="max_repeats"
-                          value={formData.max_repeats || 5}
-                          onChange={handleInputChange}
-                          min="0"
-                          max="20"
-                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
-                        />
-                      </div>
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          name="require_acknowledgment"
-                          checked={formData.require_acknowledgment !== false}
-                          onChange={(e) => setFormData({...formData, require_acknowledgment: e.target.checked})}
-                          className="mr-2"
-                        />
-                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                          Require Acknowledgment
-                          <span className="text-xs text-gray-500 block">
-                            (enable repeat notifications)
-                          </span>
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 -mx-8 -mb-8 px-8 py-6 rounded-b-xl">
-                    <button
-                      type="button"
-                      onClick={() => {
-                      setShowCreateForm(false);
-                      setEditingJob(null);
-                      setFormData({
-                        name: '',
-                        description: '',
-                        sources: '',
-                        prompt: '',
-                        frequency_minutes: 60,
-                        threshold_score: 75,
-                        notification_channel_ids: [],
-                        alert_cooldown_minutes: 60,
-                        max_alerts_per_hour: 5,
-                        repeat_frequency_minutes: 60,
-                        max_repeats: 5,
-                        require_acknowledgment: true
-                      });
-                    }}
-                      className="px-6 py-3 bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-500 transition-all duration-200 font-medium border border-gray-300 dark:border-gray-600"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-8 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-lg hover:from-blue-600 hover:to-indigo-700 transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-                    >
-{editingJob ? 'Update Job' : 'Create Job'}
-                    </button>
-                  </div>
-                </form>
-                </div></div>
-            </div>
-          </div>
-        )}
 
         {/* Jobs List with Alert Integration */}
         <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
@@ -1603,6 +1306,310 @@ const MainApp = () => {
                 >
                   Cancel
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Job Form Modal - Available Globally */}
+      {console.log('🚀 showCreateForm state:', showCreateForm) || null}
+      {showCreateForm && console.log('🚀 MODAL SHOULD RENDER NOW!') && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 overflow-y-auto h-full w-full z-50 backdrop-blur-sm">
+          <div className="relative top-10 mx-auto p-0 border-0 w-11/12 md:w-4/5 lg:w-3/4 xl:w-2/3 shadow-2xl rounded-2xl bg-white dark:bg-gray-800 max-h-[90vh] overflow-y-auto">
+            <div className="mt-3">
+              <div className="flex justify-between items-center mb-6 bg-gradient-to-r from-blue-500 to-indigo-600 text-white p-6 rounded-t-2xl">
+                <h3 className="text-2xl font-bold text-white flex items-center">
+                  <span className="mr-3">{editingJob ? '✏️' : '🚀'}</span> 
+                  {editingJob ? 'Edit Monitoring Job' : 'Create New Monitoring Job'}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateForm(false)}
+                  className="text-white hover:text-gray-200 transition-colors duration-200 p-2 rounded-full hover:bg-white hover:bg-opacity-20"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="p-6">
+                <form onSubmit={handleSubmit} className="space-y-8">
+                  {/* Basic Information */}
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-700 dark:to-gray-700 rounded-xl p-6 border border-blue-100 dark:border-gray-600">
+                    <h4 className="text-lg font-bold text-gray-800 dark:text-white mb-4 flex items-center">
+                      <span className="mr-2">📝</span> Basic Information
+                    </h4>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Job Name *</label>
+                        <input
+                          type="text"
+                          name="name"
+                          value={formData.name}
+                          onChange={handleInputChange}
+                          required
+                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Description</label>
+                        <input
+                          type="text"
+                          name="description"
+                          value={formData.description}
+                          onChange={handleInputChange}
+                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Sources and Monitoring */}
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-700 dark:to-gray-700 rounded-xl p-6 border border-blue-100 dark:border-gray-600">
+                    <h4 className="text-lg font-bold text-gray-800 dark:text-white mb-4 flex items-center">
+                      <span className="mr-2">🔍</span> Sources & Monitoring
+                    </h4>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Sources (one per line) *</label>
+                        <textarea
+                          name="sources"
+                          value={formData.sources}
+                          onChange={handleInputChange}
+                          required
+                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
+                          rows="3"
+                          placeholder="https://example.com/news&#10;https://another-site.com/feed"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Analysis Prompt *</label>
+                        <textarea
+                          name="prompt"
+                          value={formData.prompt}
+                          onChange={handleInputChange}
+                          required
+                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
+                          rows="3"
+                          placeholder="Analyze this content for anything that could impact oil prices..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Frequency and Thresholds */}
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-700 dark:to-gray-700 rounded-xl p-6 border border-blue-100 dark:border-gray-600">
+                    <h4 className="text-lg font-bold text-gray-800 dark:text-white mb-4 flex items-center">
+                      <span className="mr-2">⏱️</span> Frequency & Thresholds
+                    </h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">
+                          Check Frequency (minutes)
+                          {userSubscription && (
+                            <span className="text-xs text-gray-500 block">
+                              (min: {userSubscription.min_frequency_minutes})
+                            </span>
+                          )}
+                        </label>
+                        <input
+                          type="number"
+                          name="frequency_minutes"
+                          value={formData.frequency_minutes}
+                          onChange={handleInputChange}
+                          min={userSubscription?.min_frequency_minutes || 5}
+                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
+                        />
+                        {userSubscription?.tier === 'free' && (
+                          <p className="mt-1 text-xs text-gray-500">
+                            Free tier: Hourly checks minimum. Upgrade for minute-level monitoring.
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Alert Threshold (0-100)</label>
+                        <input
+                          type="number"
+                          name="threshold_score"
+                          value={formData.threshold_score}
+                          onChange={handleInputChange}
+                          min="0"
+                          max="100"
+                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">
+                          Alert Cooldown (minutes)
+                          <span className="text-xs text-gray-500 block">
+                            (prevent duplicates)
+                          </span>
+                        </label>
+                        <input
+                          type="number"
+                          name="alert_cooldown_minutes"
+                          value={formData.alert_cooldown_minutes}
+                          onChange={handleInputChange}
+                          min="1"
+                          max="1440"
+                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">
+                          Max Alerts/Hour
+                          <span className="text-xs text-gray-500 block">
+                            (rate limiting)
+                          </span>
+                        </label>
+                        <input
+                          type="number"
+                          name="max_alerts_per_hour"
+                          value={formData.max_alerts_per_hour}
+                          onChange={handleInputChange}
+                          min="1"
+                          max="60"
+                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Enhanced Notification Settings */}
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-700 dark:to-gray-700 rounded-xl p-6 border border-blue-100 dark:border-gray-600">
+                    <h4 className="text-lg font-bold text-gray-800 dark:text-white mb-4 flex items-center">
+                      <span className="mr-2">🔔</span> Notification Settings
+                    </h4>
+                    
+                    {/* Notification Channel Selection */}
+                    {channels.length > 0 ? (
+                      <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Notification Channels
+                        </label>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          {channels.map((channel) => (
+                            <div key={channel.id} className="flex items-center p-2 border dark:border-gray-600 rounded-md dark:bg-gray-700">
+                              <input
+                                type="checkbox"
+                                id={`channel-${channel.id}`}
+                                checked={formData.notification_channel_ids.includes(channel.id)}
+                                onChange={() => handleChannelSelectionChange(channel.id)}
+                                className="mr-3"
+                              />
+                              <label htmlFor={`channel-${channel.id}`} className="text-sm text-gray-700 dark:text-gray-200 flex-1">
+                                <span className="font-medium capitalize">{channel.channel_type}</span>
+                                <span className="text-gray-500 dark:text-gray-400 block text-xs">
+                                  {channel.config.email ? channel.config.email : 
+                                   channel.config.webhook_url ? channel.config.webhook_url.substring(0, 40) + '...' : 
+                                   'Not configured'}
+                                </span>
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                          Select which channels to send alerts to. You can configure channels in Settings.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="text-center p-4 border border-dashed border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700">
+                        <p className="text-sm text-gray-500 dark:text-gray-400">No notification channels configured</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                          Go to Settings to set up email, Teams, or other notification channels
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Repeat Settings */}
+                    <div className="grid grid-cols-2 gap-4 mt-4">
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">
+                          Repeat Frequency (minutes)
+                          <span className="text-xs text-gray-500 block">
+                            (if not acknowledged)
+                          </span>
+                        </label>
+                        <input
+                          type="number"
+                          name="repeat_frequency_minutes"
+                          value={formData.repeat_frequency_minutes || 60}
+                          onChange={handleInputChange}
+                          min="5"
+                          max="1440"
+                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">
+                          Max Repeats
+                          <span className="text-xs text-gray-500 block">
+                            (before stopping)
+                          </span>
+                        </label>
+                        <input
+                          type="number"
+                          name="max_repeats"
+                          value={formData.max_repeats || 5}
+                          onChange={handleInputChange}
+                          min="0"
+                          max="20"
+                          className="mt-1 block w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
+                        />
+                      </div>
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          name="require_acknowledgment"
+                          checked={formData.require_acknowledgment !== false}
+                          onChange={(e) => setFormData({...formData, require_acknowledgment: e.target.checked})}
+                          className="mr-2"
+                        />
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                          Require Acknowledgment
+                          <span className="text-xs text-gray-500 block">
+                            (enable repeat notifications)
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 -mx-8 -mb-8 px-8 py-6 rounded-b-xl">
+                    <button
+                      type="button"
+                      onClick={() => {
+                      setShowCreateForm(false);
+                      setEditingJob(null);
+                      setFormData({
+                        name: '',
+                        description: '',
+                        sources: '',
+                        prompt: '',
+                        frequency_minutes: 60,
+                        threshold_score: 75,
+                        notification_channel_ids: [],
+                        alert_cooldown_minutes: 60,
+                        max_alerts_per_hour: 5,
+                        repeat_frequency_minutes: 60,
+                        max_repeats: 5,
+                        require_acknowledgment: true
+                      });
+                    }}
+                      className="px-6 py-3 bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-500 transition-all duration-200 font-medium border border-gray-300 dark:border-gray-600"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-8 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-lg hover:from-blue-600 hover:to-indigo-700 transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                    >
+                      {editingJob ? 'Update Job' : 'Create Job'}
+                    </button>
+                  </div>
+                </form>
               </div>
             </div>
           </div>

@@ -7,18 +7,18 @@ const FailedJobs = ({ user, isDarkMode, toggleDarkMode, logout, onEditJob, onNav
   const [failedJobs, setFailedJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedJobs, setExpandedJobs] = useState(new Set());
-  const [showResolved, setShowResolved] = useState(false);
+
   const [retryingJobs, setRetryingJobs] = useState(new Set());
 
   useEffect(() => {
     fetchFailedJobs();
-  }, [showResolved]);
+  }, []);
 
   const fetchFailedJobs = async () => {
     try {
       setLoading(true);
       const response = await axios.get(`${API_URL}/failed-jobs`, {
-        params: { resolved: showResolved }
+        params: { resolved: false }
       });
       setFailedJobs(response.data.failed_jobs || []);
     } catch (error) {
@@ -28,16 +28,23 @@ const FailedJobs = ({ user, isDarkMode, toggleDarkMode, logout, onEditJob, onNav
     }
   };
 
-  const editJob = async (jobId) => {
+  const editJob = async (jobId, failedJobId) => {
     try {
+      console.log('Edit job clicked:', jobId, failedJobId);
+      console.log('onEditJob function:', onEditJob);
+      
       // First, fetch the job to make sure it exists
       const response = await axios.get(`${API_URL}/jobs/${jobId}`);
       const job = response.data;
       
-      // Navigate to dashboard and trigger edit mode
-      if (onEditJob && onNavigate) {
+      console.log('Job data fetched:', job);
+      
+      // Trigger edit mode - this will show the modal form on current page
+      if (onEditJob) {
+        console.log('Calling onEditJob with:', job);
         onEditJob(job);
-        onNavigate('dashboard');
+      } else {
+        console.error('onEditJob is not defined!');
       }
     } catch (error) {
       console.error('Error editing job:', error);
@@ -52,9 +59,15 @@ const FailedJobs = ({ user, isDarkMode, toggleDarkMode, logout, onEditJob, onNav
   const retryJob = async (failedJobId) => {
     try {
       setRetryingJobs(prev => new Set(prev).add(failedJobId));
+      
+      // Mark as deleted and retry
+      await axios.post(`${API_URL}/failed-jobs/${failedJobId}/mark-deleted`);
       const response = await axios.post(`${API_URL}/failed-jobs/${failedJobId}/retry`);
+      
       alert(`✅ ${response.data.message}`);
-      fetchFailedJobs(); // Refresh the list
+      
+      // Remove from local state immediately
+      setFailedJobs(prev => prev.filter(fj => fj.id !== failedJobId));
     } catch (error) {
       console.error('Error retrying job:', error);
       alert('❌ Failed to retry job');
@@ -64,6 +77,23 @@ const FailedJobs = ({ user, isDarkMode, toggleDarkMode, logout, onEditJob, onNav
         newSet.delete(failedJobId);
         return newSet;
       });
+    }
+  };
+
+  const deleteFailedJob = async (failedJobId) => {
+    if (!window.confirm('Are you sure you want to permanently delete this failed job record?')) {
+      return;
+    }
+    
+    try {
+      await axios.delete(`${API_URL}/failed-jobs/${failedJobId}`);
+      alert('✅ Failed job record deleted successfully');
+      
+      // Remove from local state
+      setFailedJobs(prev => prev.filter(fj => fj.id !== failedJobId));
+    } catch (error) {
+      console.error('Error deleting failed job:', error);
+      alert('❌ Failed to delete failed job record');
     }
   };
 
@@ -119,16 +149,6 @@ const FailedJobs = ({ user, isDarkMode, toggleDarkMode, logout, onEditJob, onNav
         </h1>
         <div className="flex items-center space-x-4">
           <button
-            onClick={() => setShowResolved(!showResolved)}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              showResolved 
-                ? 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900 dark:text-green-200' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200'
-            }`}
-          >
-            {showResolved ? '✅ Showing Resolved' : '🔄 Show Resolved'}
-          </button>
-          <button
             onClick={fetchFailedJobs}
             className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
           >
@@ -143,14 +163,14 @@ const FailedJobs = ({ user, isDarkMode, toggleDarkMode, logout, onEditJob, onNav
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                {showResolved ? 'Resolved Failed Jobs' : 'Active Failed Jobs'}
+                Active Failed Jobs
               </h3>
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                {failedJobs.length} jobs {showResolved ? 'resolved' : 'need attention'}
+                {failedJobs.length} jobs need attention
               </p>
             </div>
             <div className="text-4xl">
-              {showResolved ? '✅' : '🚨'}
+              🚨
             </div>
           </div>
         </div>
@@ -160,14 +180,12 @@ const FailedJobs = ({ user, isDarkMode, toggleDarkMode, logout, onEditJob, onNav
       {failedJobs.length === 0 ? (
         <div className="text-center py-12">
           <div className="bg-white dark:bg-gray-800 rounded-lg p-12 shadow-md">
-            <div className="text-6xl mb-4">{showResolved ? '🎉' : '✨'}</div>
+            <div className="text-6xl mb-4">✨</div>
             <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-              {showResolved ? 'No Resolved Jobs' : 'No Failed Jobs!'}
+              No Failed Jobs!
             </h3>
             <p className="text-gray-600 dark:text-gray-400">
-              {showResolved 
-                ? 'No jobs have been resolved yet.' 
-                : 'Great! All your jobs are running smoothly.'}
+              Great! All your jobs are running smoothly.
             </p>
           </div>
         </div>
@@ -288,10 +306,16 @@ const FailedJobs = ({ user, isDarkMode, toggleDarkMode, logout, onEditJob, onNav
                       {retryingJobs.has(job.id) ? '🔄 Retrying...' : '🔄 Retry Job'}
                     </button>
                     <button
-                      onClick={() => editJob(job.job_id)}
-                      className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
+                      onClick={() => editJob(job.job_id, job.id)}
+                      className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium transition-colors"
                     >
                       ✏️ Edit & Fix Job
+                    </button>
+                    <button
+                      onClick={() => deleteFailedJob(job.id)}
+                      className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-colors"
+                    >
+                      🗑️ Delete Record
                     </button>
                   </div>
                 )}

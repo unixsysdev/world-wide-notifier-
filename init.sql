@@ -154,6 +154,8 @@ CREATE TABLE failed_jobs (
     resolved BOOLEAN DEFAULT FALSE,
     resolved_at TIMESTAMP,
     resolved_by VARCHAR(255),
+    deleted BOOLEAN DEFAULT FALSE,
+    deleted_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -179,3 +181,4 @@ CREATE INDEX idx_api_keys_active ON api_keys(is_active);
 CREATE INDEX idx_failed_jobs_user_id ON failed_jobs(user_id);
 CREATE INDEX idx_failed_jobs_resolved ON failed_jobs(resolved);
 CREATE INDEX idx_failed_jobs_created_at ON failed_jobs(created_at);
+CREATE INDEX idx_failed_jobs_deleted ON failed_jobs(deleted);

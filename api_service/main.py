@@ -584,6 +584,36 @@ def update_api_key(user_id: str, key_id: str, updates: dict):
                 raise HTTPException(status_code=404, detail="API key not found")
             conn.commit()
 
+def update_api_keys_for_subscription_change(user_id: str):
+    """Update all API keys for a user when their subscription changes"""
+    subscription = get_user_subscription_info(user_id)
+    if not subscription:
+        return
+    
+    # Set rate limit based on tier
+    tier_limits = {
+        'free': 60,
+        'premium': 300,
+        'premium_plus': 300
+    }
+    new_rate_limit = tier_limits.get(subscription['tier'], 60)
+    
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            # Update all API keys for this user
+            cur.execute(
+                """
+                UPDATE api_keys 
+                SET rate_limit_per_minute = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = %s
+                """,
+                (new_rate_limit, user_id)
+            )
+            conn.commit()
+            
+            # Log the update
+            print(f"Updated {cur.rowcount} API keys for user {user_id} to {subscription['tier']} tier limits")
+
 # Rate limiting functionality
 def check_rate_limit(user_id: str, api_key_id: str, rate_limit_per_minute: int):
     """Check if user has exceeded their rate limit"""
@@ -2512,6 +2542,9 @@ async def handle_successful_payment(session):
                     (tier, user_id)
                 )
                 conn.commit()
+                
+                # Update API keys with new tier limits
+                update_api_keys_for_subscription_change(user_id)
 
 async def handle_subscription_updated(subscription):
     """Handle subscription updates from Stripe"""
@@ -2598,7 +2631,7 @@ async def get_failed_jobs(
                     j.threshold_score
                 FROM failed_jobs fj
                 JOIN jobs j ON fj.job_id = j.id
-                WHERE fj.user_id = %s AND fj.resolved = %s
+                WHERE fj.user_id = %s AND fj.resolved = %s AND (fj.deleted IS NULL OR fj.deleted = FALSE)
                 ORDER BY fj.created_at DESC
                 LIMIT %s
             """, (user_id, resolved, limit))
@@ -2698,6 +2731,51 @@ async def resolve_failed_job(
             
             return {"message": "Failed job marked as resolved"}
 
+@app.post("/failed-jobs/{failed_job_id}/mark-deleted")
+async def mark_failed_job_deleted(
+    failed_job_id: str,
+    current_user=Depends(get_current_user)
+):
+    """Mark a failed job as deleted (hidden from UI but kept for tracking retries)"""
+    user_id = current_user['id']
+    
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE failed_jobs 
+                SET deleted = TRUE, deleted_at = CURRENT_TIMESTAMP
+                WHERE id = %s AND user_id = %s
+            """, (failed_job_id, user_id))
+            
+            if cur.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Failed job not found")
+            
+            conn.commit()
+            
+            return {"message": "Failed job marked as deleted"}
+
+@app.delete("/failed-jobs/{failed_job_id}")
+async def delete_failed_job(
+    failed_job_id: str,
+    current_user=Depends(get_current_user)
+):
+    """Permanently delete a failed job record"""
+    user_id = current_user['id']
+    
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                DELETE FROM failed_jobs 
+                WHERE id = %s AND user_id = %s
+            """, (failed_job_id, user_id))
+            
+            if cur.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Failed job not found")
+            
+            conn.commit()
+            
+            return {"message": "Failed job record deleted successfully"}
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
@@ -2758,6 +2836,17 @@ async def delete_user_api_key(
     try:
         delete_api_key(current_user['id'], key_id)
         return {"message": "API key deleted successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api-keys/update-subscription-limits")
+async def update_api_keys_subscription_limits(
+    current_user: dict = Depends(get_current_user)
+):
+    """Update API key limits based on current subscription (manual trigger)"""
+    try:
+        update_api_keys_for_subscription_change(current_user['id'])
+        return {"message": "API key limits updated successfully based on current subscription"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
